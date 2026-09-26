@@ -153,13 +153,6 @@ BarWidget {
           height: width
           radius: width / 2
           color: root.dotColor
-
-          SequentialAnimation on opacity {
-            running: !!root.running
-            loops: Animation.Infinite
-            NumberAnimation { to: 0.45; duration: 1100; easing.type: Easing.InOutSine }
-            NumberAnimation { to: 1; duration: 1100; easing.type: Easing.InOutSine }
-          }
         }
       }
 
