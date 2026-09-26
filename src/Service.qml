@@ -299,7 +299,7 @@ Item {
     repeat: true
     running: Number(root.opt("remindMinutes")) > 0
     onTriggered: {
-      if (!root.signedIn || root.running || idleMonitor.isIdle) return
+      if (!root.signedIn || root.running || reminderIdle.isIdle) return
       var minutes = Number(root.opt("remindMinutes"))
       var last = root.snapshot.entries && root.snapshot.entries.length ? Model.isoMs(root.snapshot.entries[0].stop) : 0
       var since = Math.max(last || 0, root.lastReminderAt)
@@ -307,6 +307,15 @@ Item {
       root.lastReminderAt = Date.now()
       root.notify("󱎫", "Not tracking", "No Toggl timer for " + Math.round((Date.now() - (last || Date.now())) / 60000) + " min")
     }
+  }
+
+  // Reminders fire only while nothing is tracked, when idleMonitor is off,
+  // so they need their own presence check: never nag an idle or locked session.
+  IdleMonitor {
+    id: reminderIdle
+    enabled: Number(root.opt("remindMinutes")) > 0 && root.running === null
+    timeout: 300
+    respectInhibitors: true
   }
 
   IdleMonitor {
