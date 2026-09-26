@@ -1,19 +1,40 @@
 #!/usr/bin/env bash
-# Copy this checkout into the Omarchy plugin folder (validate rejects symlinks),
-# install the CLI wrapper, and enable + place the widget on first install.
+# Install this checkout as an Omarchy shell plugin.
+#
+#   - copies the plugin to ~/.config/omarchy/plugins/<id> (validate rejects symlinks)
+#   - installs the optional `omarchy-toggl` CLI to ~/.local/bin (never replaces a
+#     different file of the same name)
+#   - enables the widget and places it in the bar; this is the only change to
+#     ~/.config/omarchy/shell.json and uses Omarchy's own `omarchy plugin enable`
+#
+# Pass --no-enable to skip the last step and place the widget yourself.
 set -euo pipefail
+
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-target="$HOME/.config/omarchy/plugins/omarchy-toggl"
+id=$(jq -r .id "$root/manifest.json")
+target="$HOME/.config/omarchy/plugins/$id"
+wrapper="$HOME/.local/bin/omarchy-toggl"
+enable=1
+[[ "${1:-}" == "--no-enable" ]] && enable=0
+
+for cmd in omarchy omarchy-shell python3 rsync jq; do
+  command -v "$cmd" >/dev/null || { echo "missing dependency: $cmd" >&2; exit 1; }
+done
 
 mkdir -p "$target"
 rsync -a --delete --delete-excluded \
-  --exclude '.git/' --exclude '__pycache__/' --exclude 'tests/' --exclude '.pytest_cache/' \
+  --exclude '.git/' --exclude '.github/' --exclude '__pycache__/' --exclude 'tests/' --exclude '.pytest_cache/' \
   "$root/" "$target/"
-install -Dm755 "$root/scripts/omarchy-toggl" "$HOME/.local/bin/omarchy-toggl"
 omarchy plugin validate "$target"
-omarchy-shell shell rescanPlugins >/dev/null
 
-if ! omarchy plugin list --json | jq -e '.. | objects | select(.id? == "omarchy-toggl") | select(.enabled == true)' >/dev/null 2>&1; then
-  omarchy plugin enable omarchy-toggl --section center --after omarchy.weather
+if [[ -e "$wrapper" ]] && ! grep -q "omarchy-toggl plugin backend" "$wrapper" 2>/dev/null; then
+  echo "note: $wrapper exists and is not ours; leaving it alone" >&2
+else
+  install -Dm755 "$root/scripts/omarchy-toggl" "$wrapper"
 fi
-echo "omarchy-toggl installed to $target"
+
+omarchy-shell shell rescanPlugins >/dev/null
+if (( enable )) && ! omarchy plugin list --json | jq -e --arg id "$id" '.[] | select(.id == $id and .enabled)' >/dev/null; then
+  omarchy plugin enable "$id" --section center --after omarchy.weather
+fi
+echo "Installed $id to $target"

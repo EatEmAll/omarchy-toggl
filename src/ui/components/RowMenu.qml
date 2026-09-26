@@ -47,6 +47,7 @@ Popup {
       Repeater {
         model: root.items
         delegate: Rectangle {
+          id: menuRow
           required property var modelData
           required property int index
           width: parent.width
@@ -65,7 +66,7 @@ Popup {
               anchors.verticalCenter: parent.verticalCenter
               width: Style.space(14)
               text: modelData.icon || ""
-              color: parent.parent.tone
+              color: menuRow.tone
               font.family: root.fontFamily
               font.pixelSize: Style.font.bodySmall
             }
@@ -73,7 +74,7 @@ Popup {
               anchors.verticalCenter: parent.verticalCenter
               width: parent.width - Style.space(14) - hint.width - parent.spacing * 2
               text: modelData.label
-              color: parent.parent.tone
+              color: menuRow.tone
               font.family: root.fontFamily
               font.pixelSize: Style.font.bodySmall
               elide: Text.ElideRight

@@ -1,0 +1,40 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Python tests
+        run: python -m unittest discover -s tests -t . -v
+      - name: Model.js tests
+        run: TZ=UTC deno test --allow-read tests/model_test.js
+      - name: Manifest sanity
+        run: |
+          python - <<'PY'
+          import json, os, re
+          m = json.load(open("manifest.json"))
+          assert m["schemaVersion"] == 1
+          for key in ("id", "name", "version", "author", "license", "description", "kinds", "entryPoints"):
+              assert m.get(key), f"manifest.{key} missing"
+          assert re.fullmatch(r"[a-z0-9][a-z0-9._-]*", m["id"]) and not m["id"].startswith("omarchy."), m["id"]
+          kind_key = {"bar-widget": "barWidget", "service": "service", "panel": "panel",
+                      "overlay": "overlay", "menu": "menu", "bar": "bar"}
+          for kind in m["kinds"]:
+              path = m["entryPoints"][kind_key[kind]]
+              assert ".." not in path and os.path.isfile(path), path
+          print("manifest ok:", m["id"], m["version"])
+          PY

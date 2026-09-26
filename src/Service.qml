@@ -16,7 +16,7 @@ Item {
   property var shell: null
   property var manifest: null
 
-  readonly property string pluginId: "omarchy-toggl"
+  readonly property string pluginId: "io.github.eatemall.toggl"
   readonly property string cliPath: Qt.resolvedUrl("toggl.py").toString().replace(/^file:\/\//, "")
   readonly property string cacheDir: (Quickshell.env("XDG_CACHE_HOME") || (Quickshell.env("HOME") + "/.cache")) + "/omarchy-toggl"
 

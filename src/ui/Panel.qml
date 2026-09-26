@@ -14,7 +14,7 @@ import "dialogs"
 // · project legend · body. Styling follows omarchy-stats.
 Panel {
   id: root
-  moduleName: "omarchy-toggl"
+  moduleName: "io.github.eatemall.toggl"
   manageIpc: false
 
   property var anchorItem: null

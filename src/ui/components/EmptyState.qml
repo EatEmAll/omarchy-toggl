@@ -10,12 +10,12 @@ Column {
   property color foreground: Color.foreground
   property color accent: Color.accent
   property string fontFamily: Style.font.family
-  property real topPadding: 0
+  property real iconTopPadding: 0
   spacing: Style.spacing.lg
 
   Text {
     width: parent.width
-    topPadding: root.topPadding
+    topPadding: root.iconTopPadding
     text: root.icon
     color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.75)
     font.family: root.fontFamily

@@ -39,41 +39,71 @@ Toggl web app:
   switches with `omarchy theme set`.
 - **Works offline.** Edits made while offline are queued and replayed on the next sync.
 
-## Requirements
+## Requirements and dependencies
 
-- Omarchy with the Quickshell-based `omarchy-shell` bar (it supports `omarchy plugin`).
-- `python3`, standard library only.
-- `rsync` and `jq`, used by the install script.
+- Omarchy with the Quickshell-based `omarchy-shell` bar (the version that has `omarchy plugin`).
+- `python3`, standard library only. There are no pip packages.
 - Optional: `secret-tool` (libsecret) and a running Secret Service keyring such
   as gnome-keyring. Without it, the token is stored in a mode 0600 file.
+- Optional, for `scripts/install-local.sh`: `rsync` and `jq`.
+- Optional, for development: `deno`, which runs the `Model.js` tests.
+
+The only network service used is `api.track.toggl.com`.
+
+The plugin ID is `io.github.eatemall.toggl`.
 
 ## Install
 
-From a clone:
-
-```bash
-git clone https://github.com/EatEmAll/omarchy-toggl.git
-cd omarchy-toggl
-./scripts/install-local.sh
-```
-
-Or with Omarchy's plugin manager:
+With Omarchy's plugin manager:
 
 ```bash
 omarchy plugin add https://github.com/EatEmAll/omarchy-toggl.git --enable
 ```
 
-The install script does the following:
-- copies the plugin to `~/.config/omarchy/plugins/omarchy-toggl`;
-- installs the `omarchy-toggl` CLI to `~/.local/bin`;
-- validates the manifest;
-- places the widget in the centre section.
-
-You can move the widget with:
+Omarchy shows its unsandboxed-code warning and asks you to confirm. It then
+clones the plugin to `~/.config/omarchy/plugins/io.github.eatemall.toggl` and adds the widget
+to the bar. To move the widget:
 
 ```bash
-omarchy bar move omarchy-toggl --section right
+omarchy bar move io.github.eatemall.toggl --section right
 ```
+
+To also get the `omarchy-toggl` terminal command (optional; the widget does not need it):
+
+```bash
+install -Dm755 ~/.config/omarchy/plugins/io.github.eatemall.toggl/scripts/omarchy-toggl ~/.local/bin/omarchy-toggl
+```
+
+Or install from a clone:
+
+```bash
+git clone https://github.com/EatEmAll/omarchy-toggl.git
+cd omarchy-toggl
+./scripts/install-local.sh            # add --no-enable to place the widget yourself
+```
+
+`install-local.sh` does the following:
+- copies the plugin into the Omarchy plugin folder;
+- installs the `omarchy-toggl` command, unless a different file with that name already exists;
+- enables the widget with `omarchy plugin enable`, which is its only change to `shell.json`.
+
+Nothing else in your configuration is touched. Keybindings and menu entries are
+opt-in snippets, described below.
+
+Update with `omarchy plugin update io.github.eatemall.toggl`, or with `git pull &&
+./scripts/install-local.sh` for a clone.
+
+## Uninstall
+
+```bash
+omarchy-toggl auth logout                      # optional: delete the stored API token and cache
+omarchy plugin remove io.github.eatemall.toggl
+rm -f ~/.local/bin/omarchy-toggl               # if you installed the CLI
+rm -rf ~/.cache/omarchy-toggl                  # cached entries, if you skipped logout
+```
+
+From a clone, `./scripts/uninstall.sh --purge` does all of the above. It only
+reminds you about keybindings or menu entries you added by hand.
 
 ## Sign in
 
@@ -120,7 +150,7 @@ omarchy-toggl auth login
 Add these to `~/.config/hypr/bindings.lua`, adjusting the keys to taste:
 
 ```lua
-o.bind("SUPER + ALT + T", "Toggl panel", "omarchy-shell shell toggle omarchy-toggl")
+o.bind("SUPER + ALT + T", "Toggl panel", "omarchy-shell shell toggle io.github.eatemall.toggl")
 o.bind("SUPER + ALT + SHIFT + T", "Toggl start/stop", "omarchy-shell omarchy-toggl toggle")
 ```
 
@@ -132,7 +162,7 @@ Add these to `~/.config/omarchy/extensions/omarchy-menu.jsonc`:
 "toggl": {"icon":"󱎫","label":"Toggl"},
 "toggl.quick": {"icon":"","label":"Start…","action":"omarchy-shell omarchy-toggl quick"},
 "toggl.toggle": {"icon":"","label":"Stop / continue","action":"omarchy-shell omarchy-toggl toggle"},
-"toggl.panel": {"icon":"󰄧","label":"Open panel","action":"omarchy-shell shell toggle omarchy-toggl"},
+"toggl.panel": {"icon":"󰄧","label":"Open panel","action":"omarchy-shell shell toggle io.github.eatemall.toggl"},
 "toggl.timesheet": {"icon":"󰃭","label":"Timesheet","action":"omarchy-shell omarchy-toggl openView timesheet"},
 ```
 
@@ -161,7 +191,7 @@ The exit codes are:
 | 4 | quota exhausted |
 | 5 | network error |
 
-The shell also exposes an IPC target:
+The shell also exposes an IPC target named `omarchy-toggl`:
 
 ```
 omarchy-shell omarchy-toggl <toggle | start TEXT | stop | continueLast | quick | openView list|timesheet|calendar|settings | sync | status>
@@ -169,7 +199,7 @@ omarchy-shell omarchy-toggl <toggle | start TEXT | stop | continueLast | quick |
 
 ## Settings
 
-Change settings in the panel (⚙) or with `omarchy bar set omarchy-toggl <key> <value>`.
+Change settings in the panel (⚙) or with `omarchy bar set io.github.eatemall.toggl <key> <value>`.
 
 | Key | Default | |
 |---|---|---|
@@ -220,6 +250,7 @@ so review the code before installing.
 
 ```bash
 ./scripts/test.sh            # Python unittest + deno tests for src/ui/Model.js + manifest validation
+qmllint -I /usr/share/omarchy/shell src/BarWidget.qml   # optional lint, as the Omarchy docs suggest
 ./scripts/install-local.sh   # redeploy; widget and panel QML hot-reload
 omarchy restart shell        # needed after changing src/Service.qml or after a QML type failed to load
 quickshell log -p /usr/share/omarchy/shell | grep -i toggl

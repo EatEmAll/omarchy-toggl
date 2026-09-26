@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "id": "omarchy-toggl",
+  "id": "io.github.eatemall.toggl",
   "name": "Toggl Track",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "Roman Molotkovsky",
   "license": "MIT",
   "description": "Toggl Track timer pill with a Toggl-style list, timesheet and calendar panel",

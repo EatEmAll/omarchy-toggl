@@ -4,7 +4,7 @@
 omarchy-shell (Quickshell)
  ├─ src/Service.qml      one instance: state FileView, Backend queue, sync timer,
  │                       1 s clock + suspend-gap detection, IdleMonitor, reminders,
- │                       IpcHandler "omarchy-toggl"
+ │                       IpcHandler "omarchy-toggl" (plugin id: io.github.eatemall.toggl)
  ├─ src/BarWidget.qml    one per monitor: the pill; finds the service through
  │                       bar.shell.serviceFor() and pushes its settings to it
  └─ src/ui/Panel.qml     KeyboardPanel popout (sections/, views/, dialogs/, components/)

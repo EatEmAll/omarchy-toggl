@@ -8,7 +8,7 @@ import "ui/Model.js" as Model
 // idle. One instance per monitor; all state lives in the shared service.
 BarWidget {
   id: root
-  moduleName: "omarchy-toggl"
+  moduleName: "io.github.eatemall.toggl"
 
   property var svc: null
 
@@ -36,7 +36,7 @@ BarWidget {
   function resolveService() {
     if (root.svc) return
     var s = root.bar && root.bar.shell && typeof root.bar.shell.serviceFor === "function"
-      ? root.bar.shell.serviceFor("omarchy-toggl") : null
+      ? root.bar.shell.serviceFor("io.github.eatemall.toggl") : null
     if (s) {
       root.svc = s
       s.applySettings(root.settings)
