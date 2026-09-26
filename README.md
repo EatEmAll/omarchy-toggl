@@ -52,15 +52,15 @@ Toggl web app:
 From a clone:
 
 ```bash
-git clone https://github.com/<you>/omarchy-toggl.git
+git clone https://github.com/EatEmAll/omarchy-toggl.git
 cd omarchy-toggl
 ./scripts/install-local.sh
 ```
 
-Or with Omarchy's plugin manager, once the repo is published:
+Or with Omarchy's plugin manager:
 
 ```bash
-omarchy plugin add https://github.com/<you>/omarchy-toggl.git --enable
+omarchy plugin add https://github.com/EatEmAll/omarchy-toggl.git --enable
 ```
 
 The install script does the following:
