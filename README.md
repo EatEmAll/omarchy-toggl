@@ -96,7 +96,9 @@ Update with `omarchy plugin update io.github.eatemall.toggl`, or with `git pull 
 ## Uninstall
 
 ```bash
-omarchy-toggl auth logout                      # optional: delete the stored API token and cache
+# Optional, and before removing: delete the stored API token and cache.
+# Without the CLI, run python3 ~/.config/omarchy/plugins/io.github.eatemall.toggl/src/toggl.py auth logout
+omarchy-toggl auth logout
 omarchy plugin remove io.github.eatemall.toggl
 rm -f ~/.local/bin/omarchy-toggl               # if you installed the CLI
 rm -rf ~/.cache/omarchy-toggl                  # cached entries, if you skipped logout

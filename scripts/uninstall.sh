@@ -15,8 +15,13 @@ cli="$HOME/.config/omarchy/plugins/$id/src/toggl.py"
 purge=0
 [[ "${1:-}" == "--purge" ]] && purge=1
 
-if (( purge )) && [[ -f "$cli" ]]; then
-  python3 "$cli" --text auth logout || true
+if (( purge )); then
+  # Sign out through the plugin when it is still installed; otherwise (or if
+  # that fails) clear the keyring entry directly so the token never lingers.
+  if [[ -f "$cli" ]]; then python3 "$cli" --text auth logout || true; fi
+  if command -v secret-tool >/dev/null; then
+    secret-tool clear service omarchy-toggl account api-token 2>/dev/null || true
+  fi
 fi
 
 if omarchy plugin list --json 2>/dev/null | jq -e --arg id "$id" '.[] | select(.id == $id)' >/dev/null; then

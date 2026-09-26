@@ -21,6 +21,14 @@ for cmd in omarchy omarchy-shell python3 rsync jq; do
   command -v "$cmd" >/dev/null || { echo "missing dependency: $cmd" >&2; exit 1; }
 done
 
+# A git-managed install (from `omarchy plugin add`) must be updated with
+# `omarchy plugin update`; syncing over it would delete its .git metadata.
+if [[ -d "$target/.git" ]]; then
+  echo "$target is managed by 'omarchy plugin add'." >&2
+  echo "Update it with: omarchy plugin update $id  (or 'omarchy plugin remove $id' first to switch to this checkout)" >&2
+  exit 1
+fi
+
 mkdir -p "$target"
 rsync -a --delete --delete-excluded \
   --exclude '.git/' --exclude '.github/' --exclude '__pycache__/' --exclude 'tests/' --exclude '.pytest_cache/' \
