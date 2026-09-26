@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy-toggl",
+  "name": "Toggl Track",
+  "version": "0.1.0",
+  "author": "Roman Molotkovsky",
+  "license": "MIT",
+  "description": "Toggl Track timer pill with a Toggl-style list, timesheet and calendar panel",
+  "kinds": ["bar-widget", "service"],
+  "entryPoints": {
+    "barWidget": "src/BarWidget.qml",
+    "service": "src/Service.qml"
+  },
+  "barWidget": {
+    "displayName": "Toggl Track",
+    "description": "Running timer; click for quick start, entries, timesheet and calendar",
+    "category": "Productivity",
+    "allowMultiple": false,
+    "defaultSection": "center",
+    "defaults": {
+      "labelMode": "description",
+      "maxLabelChars": 18,
+      "idleDisplay": "today-total",
+      "showSeconds": true,
+      "syncMinutes": 5,
+      "historyDays": 7,
+      "idleMinutes": 10,
+      "remindMinutes": 0,
+      "workspaceId": "",
+      "defaultView": "list",
+      "groupSimilar": true
+    },
+    "schema": [
+      { "key": "labelMode", "type": "enum", "label": "Pill label", "options": ["description", "project", "timer"] },
+      { "key": "maxLabelChars", "type": "integer", "label": "Max label length", "min": 6, "max": 40, "step": 1, "defaultValue": 18 },
+      { "key": "idleDisplay", "type": "enum", "label": "When no timer runs", "options": ["today-total", "icon", "hidden"] },
+      { "key": "showSeconds", "type": "boolean", "label": "Show seconds", "defaultValue": true },
+      { "key": "syncMinutes", "type": "integer", "label": "Background sync (minutes)", "min": 3, "max": 60, "step": 1, "defaultValue": 5 },
+      { "key": "historyDays", "type": "integer", "label": "Days of entries to keep", "min": 2, "max": 14, "step": 1, "defaultValue": 7 },
+      { "key": "idleMinutes", "type": "integer", "label": "Idle detection (minutes, 0 = off)", "min": 0, "max": 120, "step": 1, "defaultValue": 10 },
+      { "key": "remindMinutes", "type": "integer", "label": "Not-tracking reminder (minutes, 0 = off)", "min": 0, "max": 240, "step": 5, "defaultValue": 0 },
+      { "key": "workspaceId", "type": "string", "label": "Workspace ID (empty = default)" },
+      { "key": "defaultView", "type": "enum", "label": "Default view", "options": ["list", "timesheet", "calendar"] },
+      { "key": "groupSimilar", "type": "boolean", "label": "Group similar entries", "defaultValue": true }
+    ]
+  }
+}
