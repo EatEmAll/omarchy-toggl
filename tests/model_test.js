@@ -130,3 +130,12 @@ Deno.test("flag accepts booleans and string forms", () => {
   assertEquals([true, "true", undefined, 1].map(M.flag), [true, true, true, true]);
   assertEquals([false, "false", 0, "0"].map(M.flag), [false, false, false, false]);
 });
+
+Deno.test("timer mode cycles and honours legacy showSeconds", () => {
+  assertEquals(M.timerMode({}), "hms");
+  assertEquals(M.timerMode({ showSeconds: false }), "hm");
+  assertEquals(M.timerMode({ showSeconds: "false" }), "hm");
+  assertEquals(M.timerMode({ timerMode: "hidden", showSeconds: true }), "hidden");
+  assertEquals(M.timerMode({ timerMode: "bogus" }), "hms");
+  assertEquals(["hms", "hm", "hidden"].map(M.nextTimerMode), ["hm", "hidden", "hms"]);
+});

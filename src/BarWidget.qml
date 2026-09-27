@@ -19,7 +19,7 @@ BarWidget {
   readonly property bool hasError: !!(svc && (svc.hasTokenError || !svc.signedIn
     || (svc.snapshot.error && svc.snapshot.error.kind === "quota")))
   readonly property string labelMode: String(opt("labelMode"))
-  readonly property bool showSeconds: Model.flag(opt("showSeconds"))
+  readonly property string timerMode: Model.timerMode(root.settings)
   readonly property string idleDisplay: String(opt("idleDisplay"))
   readonly property string pillLabel: {
     if (!running) return ""
@@ -27,7 +27,7 @@ BarWidget {
       : labelMode === "timer" ? "" : (running.description || running.projectName || "")
     return Model.elide(text, Number(opt("maxLabelChars")))
   }
-  readonly property string timeText: running ? Model.hms(svc.elapsed, showSeconds) : ""
+  readonly property string timeText: running && timerMode !== "hidden" ? Model.hms(svc.elapsed, timerMode === "hms") : ""
   readonly property string idleText: svc ? Model.hm(svc.todayStats.total) : ""
   readonly property color dotColor: running ? Model.projectColor(running, Color.muted) : Color.muted
 
@@ -132,8 +132,8 @@ BarWidget {
       if (b === Qt.LeftButton) root.togglePanel()
       else if (b === Qt.MiddleButton) { if (root.svc && root.svc.signedIn) root.svc.toggle() }
       else if (b === Qt.RightButton) {
-        // While tracking: toggle seconds in the timer. Idle: today/week totals.
-        if (root.running && root.svc) root.svc.saveSettings({ showSeconds: !root.showSeconds })
+        // While tracking: cycle the timer 0:30:05 -> 0:30 -> hidden. Idle: today/week totals.
+        if (root.running && root.svc) root.svc.saveSettings({ timerMode: Model.nextTimerMode(root.timerMode) })
         else root.showTotals()
       }
     }
@@ -229,7 +229,7 @@ BarWidget {
       Text {
         anchors.horizontalCenter: parent.horizontalCenter
         visible: !!root.running
-        text: root.running ? String(Math.floor(root.svc.elapsed / 3600)) : ""
+        text: root.running && root.timerMode !== "hidden" ? String(Math.floor(root.svc.elapsed / 3600)) : ""
         color: button.foreground
         font.family: button.fontFamily
         font.pixelSize: button.fontSize
@@ -237,7 +237,7 @@ BarWidget {
       Text {
         anchors.horizontalCenter: parent.horizontalCenter
         visible: !!root.running
-        text: root.running ? String(Math.floor(root.svc.elapsed % 3600 / 60)).padStart(2, "0") : ""
+        text: root.running && root.timerMode !== "hidden" ? String(Math.floor(root.svc.elapsed % 3600 / 60)).padStart(2, "0") : ""
         color: button.foreground
         font.family: button.fontFamily
         font.pixelSize: button.fontSize

@@ -272,12 +272,17 @@ Flickable {
         }
       }
       SettingRow {
-        label: "Show seconds in bar"
-        Ui.ToggleSwitch {
-          checked: Model.flag(root.opt("showSeconds"))
+        label: "Timer in bar"
+        hint: "Right-click the pill while tracking to cycle"
+        Ui.Dropdown {
+          width: Style.space(150)
+          showLabel: false
           foreground: ctx.foreground
           accent: ctx.accent
-          onToggled: root.save("showSeconds", !checked)
+          fontFamily: ctx.fontFamily
+          value: Model.timerMode(root.svc ? root.svc.settings : null)
+          options: [{ value: "hms", label: "0:30:05" }, { value: "hm", label: "0:30" }, { value: "hidden", label: "Hidden" }]
+          onChanged: function(value) { root.save("timerMode", value) }
         }
       }
       SettingRow {

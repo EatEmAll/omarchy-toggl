@@ -120,7 +120,7 @@ omarchy-toggl auth login
 
 | Where | Action |
 |---|---|
-| Pill | left click: panel · middle click: stop / continue last · right click: show/hide seconds while a timer runs, otherwise a today/week notification |
+| Pill | left click: panel · middle click: stop / continue last · right click: while a timer runs, cycle the timer (0:30:05 → 0:30 → hidden); otherwise a today/week notification |
 | Panel | see the keys below |
 | CLI / IPC | see below; handy for keybindings and the Omarchy menu |
 
@@ -208,7 +208,7 @@ Change settings in the panel (⚙) or with `omarchy bar set io.github.eatemall.t
 | `labelMode` | `description` | pill label: `description`, `project` or `timer` |
 | `maxLabelChars` | `18` | pill label length |
 | `idleDisplay` | `today-total` | when idle: `today-total`, `icon` or `hidden` |
-| `showSeconds` | `true` | seconds in the pill |
+| `timerMode` | `hms` | pill timer: `hms` (0:30:05), `hm` (0:30) or `hidden`; right-click cycles it (the older `showSeconds` is still honoured) |
 | `syncMinutes` | `5` | background sync interval |
 | `historyDays` | `7` | days of entries kept locally |
 | `idleMinutes` | `10` | idle detection (0 = off) |

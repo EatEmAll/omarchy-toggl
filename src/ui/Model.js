@@ -9,6 +9,7 @@ var DEFAULTS = {
   maxLabelChars: 18,
   idleDisplay: "today-total",
   showSeconds: true,
+  timerMode: "",
   syncMinutes: 5,
   historyDays: 7,
   idleMinutes: 10,
@@ -54,6 +55,21 @@ function setting(settings, key) {
 // `omarchy bar set <id> <key> false` (without --json).
 function flag(value) {
   return !(value === false || value === "false" || value === 0 || value === "0")
+}
+
+// Pill timer: "hms" (0:30:05), "hm" (0:30) or "hidden". Falls back to the
+// older boolean showSeconds setting when timerMode is unset.
+var TIMER_MODES = ["hms", "hm", "hidden"]
+
+function timerMode(settings) {
+  var m = settings ? String(settings.timerMode || "") : ""
+  if (TIMER_MODES.indexOf(m) !== -1) return m
+  return flag(setting(settings, "showSeconds")) ? "hms" : "hm"
+}
+
+function nextTimerMode(mode) {
+  var i = TIMER_MODES.indexOf(mode)
+  return TIMER_MODES[(i + 1) % TIMER_MODES.length]
 }
 
 // ------------------------------------------------------------------ time
