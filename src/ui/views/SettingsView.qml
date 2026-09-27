@@ -274,7 +274,7 @@ Flickable {
       SettingRow {
         label: "Show seconds in bar"
         Ui.ToggleSwitch {
-          checked: root.opt("showSeconds") !== false
+          checked: Model.flag(root.opt("showSeconds"))
           foreground: ctx.foreground
           accent: ctx.accent
           onToggled: root.save("showSeconds", !checked)
@@ -284,7 +284,7 @@ Flickable {
         label: "Group similar entries"
         hint: "Same description, project and tags on a day"
         Ui.ToggleSwitch {
-          checked: root.opt("groupSimilar") !== false
+          checked: Model.flag(root.opt("groupSimilar"))
           foreground: ctx.foreground
           accent: ctx.accent
           onToggled: root.save("groupSimilar", !checked)

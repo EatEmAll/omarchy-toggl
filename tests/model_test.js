@@ -125,3 +125,8 @@ Deno.test("parseState guards schema", () => {
   assertEquals(M.setting({}, "syncMinutes"), 5);
   assertEquals(M.setting({ syncMinutes: 10 }, "syncMinutes"), 10);
 });
+
+Deno.test("flag accepts booleans and string forms", () => {
+  assertEquals([true, "true", undefined, 1].map(M.flag), [true, true, true, true]);
+  assertEquals([false, "false", 0, "0"].map(M.flag), [false, false, false, false]);
+});

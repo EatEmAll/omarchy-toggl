@@ -52,7 +52,7 @@ Panel {
   readonly property var legendSegments: Model.legend(Model.rangeStats(poolEntries, range.from, range.to, buildNow), 0.07)
   readonly property var rows: Model.groupEntries(poolEntries, {
     fromKey: range.from, toKey: range.to, projectFilter: projectFilter, query: query, todayKey: todayKey,
-    groupSimilar: svc ? svc.opt("groupSimilar") !== false : true, expanded: expanded
+    groupSimilar: svc ? Model.flag(svc.opt("groupSimilar")) : true, expanded: expanded
   }, buildNow)
   readonly property bool bodyReady: !!(svc && (snapshot.lastSyncAt || !svc.signedIn)) && pool.covered
   readonly property bool textEditing: timerBar.editing || entriesView.searching || settingsView.editingText || editor.visible

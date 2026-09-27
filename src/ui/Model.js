@@ -50,6 +50,12 @@ function setting(settings, key) {
   return v === undefined || v === null || v === "" && key !== "workspaceId" ? DEFAULTS[key] : v
 }
 
+// Boolean settings may arrive as strings ("false") when set with
+// `omarchy bar set <id> <key> false` (without --json).
+function flag(value) {
+  return !(value === false || value === "false" || value === 0 || value === "0")
+}
+
 // ------------------------------------------------------------------ time
 
 function pad2(n) { return n < 10 ? "0" + n : String(n) }

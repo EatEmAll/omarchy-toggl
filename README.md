@@ -120,7 +120,7 @@ omarchy-toggl auth login
 
 | Where | Action |
 |---|---|
-| Pill | left click: panel · middle click: stop / continue last · right click: today/week notification |
+| Pill | left click: panel · middle click: stop / continue last · right click: show/hide seconds while a timer runs, otherwise a today/week notification |
 | Panel | see the keys below |
 | CLI / IPC | see below; handy for keybindings and the Omarchy menu |
 

@@ -19,7 +19,7 @@ BarWidget {
   readonly property bool hasError: !!(svc && (svc.hasTokenError || !svc.signedIn
     || (svc.snapshot.error && svc.snapshot.error.kind === "quota")))
   readonly property string labelMode: String(opt("labelMode"))
-  readonly property bool showSeconds: opt("showSeconds") !== false
+  readonly property bool showSeconds: Model.flag(opt("showSeconds"))
   readonly property string idleDisplay: String(opt("idleDisplay"))
   readonly property string pillLabel: {
     if (!running) return ""
@@ -131,7 +131,11 @@ BarWidget {
     onPressed: function(b) {
       if (b === Qt.LeftButton) root.togglePanel()
       else if (b === Qt.MiddleButton) { if (root.svc && root.svc.signedIn) root.svc.toggle() }
-      else if (b === Qt.RightButton) root.showTotals()
+      else if (b === Qt.RightButton) {
+        // While tracking: toggle seconds in the timer. Idle: today/week totals.
+        if (root.running && root.svc) root.svc.saveSettings({ showSeconds: !root.showSeconds })
+        else root.showTotals()
+      }
     }
 
     // Horizontal pill ------------------------------------------------------
