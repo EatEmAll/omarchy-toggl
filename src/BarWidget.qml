@@ -33,6 +33,38 @@ BarWidget {
 
   function opt(key) { return Model.setting(root.settings, key) }
 
+  // The pill changes size (dot, label, timer) while the panel is open. The
+  // panel centres on its anchor, so anchor it to a box that keeps the pill's
+  // size from when the panel opened, pinned to the edge the bar lays this
+  // section out from: left section and widgets after the centre anchor grow
+  // away from their start edge, right section and widgets before the centre
+  // anchor grow away from their end edge.
+  property real frozenAnchorSize: -1
+  readonly property string stableEdge: {
+    var layout = root.bar ? root.bar.layoutConfig : null
+    var cfg = root.bar && root.bar.shell ? root.bar.shell.barConfig : null
+    if (!layout) return "center"
+    var sections = ["left", "center", "right"]
+    for (var s = 0; s < sections.length; s++) {
+      var list = layout[sections[s]] || []
+      var ids = list.map(function(e) { return e ? e.id : "" })
+      var mine = ids.indexOf(root.moduleName)
+      if (mine === -1) continue
+      if (sections[s] === "left") return "start"
+      if (sections[s] === "right") return "end"
+      var anchorIdx = cfg && cfg.centerAnchor ? ids.indexOf(cfg.centerAnchor) : -1
+      if (anchorIdx === -1) return "center"
+      return mine > anchorIdx ? "start" : "end"
+    }
+    return "center"
+  }
+  function edgeOffset(total, size) {
+    if (root.stableEdge === "start") return 0
+    if (root.stableEdge === "end") return total - size
+    return (total - size) / 2
+  }
+  onOpenedChanged: frozenAnchorSize = opened ? (vertical ? button.height : button.width) : -1
+
   function resolveService() {
     if (root.svc) return
     var s = root.bar && root.bar.shell && typeof root.bar.shell.serviceFor === "function"
@@ -48,7 +80,7 @@ BarWidget {
     if (!popup) return
     popup.bar = root.bar
     popup.settings = root.settings
-    popup.anchorItem = button
+    popup.anchorItem = panelAnchor
     popup.hostWidget = root
     popup.svc = root.svc
   }
@@ -114,6 +146,15 @@ BarWidget {
     function onViewRequested(name) {
       if (panelLoader.item) panelLoader.item.showView(name)
     }
+  }
+
+  Item {
+    id: panelAnchor
+    readonly property real along: root.frozenAnchorSize > 0 ? root.frozenAnchorSize : (root.vertical ? button.height : button.width)
+    width: root.vertical ? button.width : along
+    height: root.vertical ? along : button.height
+    x: root.vertical ? 0 : root.edgeOffset(button.width, along)
+    y: root.vertical ? root.edgeOffset(button.height, along) : 0
   }
 
   WidgetButton {
