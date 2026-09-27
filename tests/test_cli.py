@@ -73,7 +73,8 @@ class CliTests(unittest.TestCase):
         self.assertEqual(bad.returncode, 2)
 
     def test_status_without_token_never_fails(self):
-        env = {**os.environ, "XDG_CACHE_HOME": "/tmp/omarchy-toggl-nonexistent-cache"}
+        import tempfile
+        env = {**os.environ, "XDG_CACHE_HOME": tempfile.mkdtemp(prefix="omarchy-toggl-test-")}
         out = subprocess.run([sys.executable, str(ROOT / "src" / "toggl.py"), "status"],
                              capture_output=True, text=True, env=env)
         self.assertEqual(out.returncode, 0)

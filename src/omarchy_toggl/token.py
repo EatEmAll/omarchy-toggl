@@ -75,7 +75,8 @@ def _file_lookup() -> str | None:
 
 def _file_store(token: str) -> None:
     path = token_file()
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(path.parent, 0o700)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as handle:
         handle.write(token + "\n")

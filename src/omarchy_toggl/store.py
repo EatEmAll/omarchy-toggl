@@ -51,7 +51,7 @@ class Store:
 
     @contextlib.contextmanager
     def locked(self) -> Iterator[None]:
-        self.dir.mkdir(parents=True, exist_ok=True)
+        _private_dir(self.dir)
         with open(self.lock_path, "a+") as handle:
             fcntl.flock(handle, fcntl.LOCK_EX)
             try:
@@ -84,10 +84,20 @@ class Store:
         _atomic_write(self.ui_path, data)
 
 
+def _private_dir(path: Path) -> None:
+    """Create the cache folder readable only by the user (it holds time entries)."""
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    try:
+        os.chmod(path, 0o700)
+    except OSError:
+        pass
+
+
 def _atomic_write(path: Path, data: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    _private_dir(path.parent)
     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    with open(tmp, "w") as handle:
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as handle:
         json.dump(data, handle, separators=(",", ":"), ensure_ascii=False)
         handle.flush()
         os.fsync(handle.fileno())

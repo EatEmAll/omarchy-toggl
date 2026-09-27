@@ -25,7 +25,8 @@ if (( purge )); then
 fi
 
 if omarchy plugin list --json 2>/dev/null | jq -e --arg id "$id" '.[] | select(.id == $id)' >/dev/null; then
-  omarchy plugin remove "$id" --yes
+  # Let Omarchy show its own confirmation before it deletes the plugin folder.
+  omarchy plugin remove "$id"
 fi
 
 if [[ -f "$wrapper" ]] && grep -q "omarchy-toggl plugin backend" "$wrapper"; then
@@ -33,8 +34,13 @@ if [[ -f "$wrapper" ]] && grep -q "omarchy-toggl plugin backend" "$wrapper"; the
 fi
 
 if (( purge )); then
-  rm -rf "${XDG_CACHE_HOME:-$HOME/.cache}/omarchy-toggl"
-  rm -rf "${XDG_CONFIG_HOME:-$HOME/.config}/omarchy-toggl"
+  # Remove only the files this plugin creates, then the folders if now empty.
+  cache="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy-toggl"
+  config="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy-toggl"
+  rm -f -- "$cache/state.json" "$cache/ui.json" "$cache/state.lock" "$config/token"
+  find "$cache" -maxdepth 1 -name '.state.json.*.tmp' -type f -delete 2>/dev/null || true
+  find "$cache" -maxdepth 1 -name '.ui.json.*.tmp' -type f -delete 2>/dev/null || true
+  rmdir -- "$cache" "$config" 2>/dev/null || true
 fi
 
 echo "Removed $id."

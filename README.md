@@ -104,8 +104,9 @@ rm -f ~/.local/bin/omarchy-toggl               # if you installed the CLI
 rm -rf ~/.cache/omarchy-toggl                  # cached entries, if you skipped logout
 ```
 
-From a clone, `./scripts/uninstall.sh --purge` does all of the above. It only
-reminds you about keybindings or menu entries you added by hand.
+From a clone, `./scripts/uninstall.sh --purge` does all of the above, but deletes
+only the files the plugin creates, and Omarchy asks before removing the plugin
+folder. It only reminds you about keybindings or menu entries you added by hand.
 
 ## Sign in
 
@@ -241,7 +242,7 @@ plugin stays within it:
   `~/.config/omarchy/shell.json`, which every bar plugin can read. It is never
   held in the shell's QML scene or passed on a command line. The panel pipes it
   to the CLI over stdin.
-- **Local cache.** Cached entries live in `~/.cache/omarchy-toggl/`.
+- **Local cache.** Cached entries live in `~/.cache/omarchy-toggl/`. The folder is mode 0700 and its files 0600.
 - **Network.** The plugin only talks to `api.track.toggl.com`.
 - **Signing out.** `omarchy-toggl auth logout` removes the token and clears the cache.
 

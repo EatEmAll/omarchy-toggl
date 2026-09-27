@@ -45,3 +45,16 @@ class StoreTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PermissionTests(unittest.TestCase):
+    def test_cache_is_private(self):
+        import os, stat
+        d = Path(tempfile.mkdtemp()) / "omarchy-toggl"
+        store = Store(d)
+        with store.locked():
+            store.save(store.load())
+            store.save_ui({"a": 1})
+        self.assertEqual(stat.S_IMODE(os.stat(d).st_mode), 0o700)
+        self.assertEqual(stat.S_IMODE(os.stat(d / "state.json").st_mode), 0o600)
+        self.assertEqual(stat.S_IMODE(os.stat(d / "ui.json").st_mode), 0o600)
