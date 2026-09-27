@@ -83,7 +83,7 @@ cd omarchy-toggl
 ```
 
 `install-local.sh` does the following:
-- copies the plugin into the Omarchy plugin folder;
+- copies the plugin into the Omarchy plugin folder. It only writes into a folder it created itself, recorded in a `.omarchy-toggl-install` marker. When updating, it deletes only files listed in that marker, and it refuses to touch any other existing folder;
 - installs the `omarchy-toggl` command, unless a different file with that name already exists;
 - enables the widget with `omarchy plugin enable`, which is its only change to `shell.json`.
 

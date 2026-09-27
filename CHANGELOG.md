@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- `install-local.sh` no longer uses `rsync --delete`. It installs only into a
+  folder it created (tracked by `.omarchy-toggl-install`), refuses any other
+  existing folder, and deletes only files it installed earlier. Reported in
+  marketplace review.
+- Right-click on the pill cycles the timer while tracking:
+  `0:30:05` → `0:30` → hidden (new `timerMode` setting; `showSeconds` still honoured).
+- The open panel no longer shifts when the pill changes width.
+- The "not tracking" reminder is skipped while the session is idle or locked.
+- The bar dot no longer pulses.
+
 ## 0.2.0
 
 - **Breaking:** the plugin ID is now `io.github.eatemall.toggl`, the namespaced
