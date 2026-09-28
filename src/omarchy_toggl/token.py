@@ -8,14 +8,17 @@ from __future__ import annotations
 
 import os
 import shutil
+import signal
 import stat
 import subprocess
+import threading
 from pathlib import Path
 
 from . import safefs
 
 SERVICE_ATTRS = ["service", "omarchy-toggl", "account", "api-token"]
 LABEL = "Toggl Track API token"
+MAX_TOKEN = 4096            # Toggl tokens are 32 hex chars; anything near this is garbage
 
 
 class TokenError(Exception):
@@ -30,16 +33,44 @@ def _secret_tool() -> str | None:
     return shutil.which("secret-tool")
 
 
+def _capped_output(cmd: list[str], limit: int, timeout: float) -> bytes | None:
+    """stdout of ``cmd``, reading at most ``limit`` bytes and killing its whole
+    process group after ``timeout`` seconds; None on error, timeout or oversized output."""
+    try:
+        proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        return None
+
+    def kill() -> None:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+
+    timer = threading.Timer(timeout, kill)
+    timer.start()
+    try:
+        data = proc.stdout.read(limit + 1) if proc.stdout else b""
+    finally:
+        timer.cancel()
+        if proc.stdout:
+            proc.stdout.close()
+        if proc.poll() is None:
+            kill()
+        proc.wait()
+    if proc.returncode != 0 or len(data) > limit:
+        return None
+    return data
+
+
 def _keyring_lookup() -> str | None:
     tool = _secret_tool()
     if not tool:
         return None
-    try:
-        proc = subprocess.run([tool, "lookup", *SERVICE_ATTRS], capture_output=True, text=True, timeout=5)
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    value = proc.stdout.strip()
-    return value if proc.returncode == 0 and value else None
+    data = _capped_output([tool, "lookup", *SERVICE_ATTRS], MAX_TOKEN, timeout=5)
+    value = data.decode("utf-8", errors="replace").strip() if data else ""
+    return value or None
 
 
 def _keyring_store(token: str) -> bool:
@@ -47,8 +78,8 @@ def _keyring_store(token: str) -> bool:
     if not tool:
         return False
     try:
-        proc = subprocess.run([tool, "store", f"--label={LABEL}", *SERVICE_ATTRS],
-                              input=token, capture_output=True, text=True, timeout=10)
+        proc = subprocess.run([tool, "store", f"--label={LABEL}", *SERVICE_ATTRS], input=token, text=True,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
     except (OSError, subprocess.TimeoutExpired):
         return False
     return proc.returncode == 0
@@ -58,7 +89,8 @@ def _keyring_clear() -> None:
     tool = _secret_tool()
     if tool:
         try:
-            subprocess.run([tool, "clear", *SERVICE_ATTRS], capture_output=True, timeout=5)
+            subprocess.run([tool, "clear", *SERVICE_ATTRS], stdin=subprocess.DEVNULL,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
         except (OSError, subprocess.TimeoutExpired):
             pass
 
@@ -69,7 +101,7 @@ def _file_lookup() -> str | None:
         with safefs.private_dir(path.parent, create=False) as dirfd:
             if dirfd is None:
                 return None
-            found = safefs.read_regular(dirfd, path.name, str(path), max_bytes=4096)
+            found = safefs.read_regular(dirfd, path.name, str(path), max_bytes=MAX_TOKEN)
     except safefs.UnsafePath as exc:
         raise TokenError(f"{exc}; remove it and sign in again") from None
     if found is None:
@@ -116,7 +148,7 @@ def get_token() -> tuple[str, str]:
 
 def set_token(token: str) -> str:
     token = token.strip()
-    if not token or any(ch.isspace() for ch in token):
+    if not token or len(token) > MAX_TOKEN or any(ch.isspace() for ch in token):
         raise TokenError("token looks invalid")
     if _keyring_store(token) and _keyring_lookup() == token:
         _file_remove()

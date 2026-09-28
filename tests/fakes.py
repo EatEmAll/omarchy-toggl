@@ -24,12 +24,18 @@ def headers(remaining=25, resets=1800):
 
 
 class Resp:
-    def __init__(self, body, hdrs):
-        self._body = body
-        self.headers = hdrs
+    """Streams its body like http.client.HTTPResponse (read(n) returns at most n bytes)."""
 
-    def read(self):
-        return self._body
+    def __init__(self, body, hdrs, url=None):
+        self._body = io.BytesIO(body)
+        self.headers = hdrs
+        self._url = url
+
+    def read(self, n=-1):
+        return self._body.read(n)
+
+    def geturl(self):
+        return self._url
 
     def __enter__(self):
         return self
@@ -69,7 +75,7 @@ class FakeOpener:
                 raw = json.dumps(result).encode() if result is not None else b""
                 if status >= 400:
                     raise urllib.error.HTTPError(req.full_url, status, "err", hdrs, io.BytesIO(raw))
-                return Resp(raw, hdrs)
+                return Resp(raw, hdrs, req.full_url)
         raise urllib.error.HTTPError(req.full_url, 404, "no route", headers(None, None), io.BytesIO(b""))
 
 

@@ -260,7 +260,11 @@ plugin stays within it:
   never written through, and a symlinked folder is refused. Reads accept only
   regular files. The plugin never writes into its own install folder (no
   `__pycache__`). All of this is covered by tests that run in CI.
-- **Network.** The plugin only talks to `api.track.toggl.com`.
+- **Network.** The plugin only talks to `https://api.track.toggl.com`. It never
+  follows redirects, so the token can't be forwarded elsewhere. Responses are read
+  with hard limits (8 MB per body, 16 KB per error body, 30 s per request, 50
+  pages) and must be JSON of the expected shape. User text and the offline queue
+  are bounded as well.
 - **Signing out.** `omarchy-toggl auth logout` removes the token and clears the cache.
 
 Like every Omarchy shell plugin, this runs unsandboxed inside `omarchy-shell`,

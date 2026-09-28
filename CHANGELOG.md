@@ -34,6 +34,19 @@
   cache. A declined removal changes nothing.
 - Tags are passed as `--tag=<name>`. The wrapper always runs the installed plugin.
 - New test suites (`tests/test_installer.py`, `tests/test_safety.py`) run in CI.
+- Bounded, untrusted-input handling (marketplace review):
+  - network bodies are read in chunks with hard limits (8 MB per response,
+    16 KB per error body) and a 30 s per-request deadline;
+  - redirects are refused, because urllib would forward the `Authorization`
+    header to the redirect target, and the token is only sent to
+    `https://api.track.toggl.com`;
+  - `Accept-Encoding: identity`;
+  - responses must be JSON of the expected shape, and pagination is capped at 50 pages;
+  - stdin token input and `secret-tool` output are capped, and a hung helper's
+    whole process group is killed on timeout;
+  - descriptions (3,000 characters), tags (50 × 128) and the offline queue
+    (500 changes) are bounded;
+  - covered by `tests/test_limits.py`.
 - `uninstall.sh --purge` deletes only the files the plugin creates (no `rm -rf`)
   and no longer passes `--yes`, so Omarchy asks before removing the plugin.
 - The cache folder is created 0700 and state files 0600; the token-file folder is 0700.

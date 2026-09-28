@@ -23,7 +23,7 @@ from .stats import hms
 from .store import Store
 from .sync import Engine, UsageError
 from .timeutil import parse_when, parse_iso, now_utc, to_api
-from .token import TokenError, clear_token, get_token, set_token, token_file
+from .token import MAX_TOKEN, TokenError, clear_token, get_token, set_token, token_file
 
 EXIT = {"usage": 2, "auth": 3, "quota": 4, "net": 5, "rate": 4}
 
@@ -271,7 +271,10 @@ def _auth(args: argparse.Namespace, engine: Engine, as_text: bool) -> int:
               text, as_text)
         return 0
     if args.stdin or not sys.stdin.isatty():
-        token = sys.stdin.readline().strip()
+        line = sys.stdin.readline(MAX_TOKEN + 2)  # bounded: never buffer more than a token's worth
+        if len(line.rstrip("\n")) > MAX_TOKEN:
+            raise TokenError("token looks invalid")
+        token = line.strip()
     else:
         token = getpass.getpass("Toggl API token (track.toggl.com/profile): ").strip()
     Api(token).me()  # validate before storing; raises AuthError on a bad token

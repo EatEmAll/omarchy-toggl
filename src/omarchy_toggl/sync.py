@@ -25,6 +25,10 @@ UNFORCED_INTERVAL = 120
 FORCED_INTERVAL = 60
 META_TTL = 12 * 3600
 QUOTA_FLOOR = 3
+MAX_PENDING = 500          # offline changes kept for replay
+MAX_DESCRIPTION = 3000     # Toggl's own description limit
+MAX_TAGS = 50
+MAX_TAG_LENGTH = 128
 
 
 class UsageError(Exception):
@@ -36,6 +40,16 @@ class UsageError(Exception):
 
 
 # ------------------------------------------------------------------ helpers
+
+def check_text(description: Any = None, tags: Any = None) -> None:
+    """Bound user-supplied text (CLI, IPC, panel) before it reaches argv or the API."""
+    if description is not None and len(str(description)) > MAX_DESCRIPTION:
+        raise UsageError(f"description is longer than {MAX_DESCRIPTION} characters")
+    if tags is not None:
+        tags = list(tags)
+        if len(tags) > MAX_TAGS or any(len(str(t)) > MAX_TAG_LENGTH for t in tags):
+            raise UsageError(f"at most {MAX_TAGS} tags of up to {MAX_TAG_LENGTH} characters")
+
 
 def normalize(raw: dict[str, Any]) -> dict[str, Any]:
     duration = raw.get("duration")
@@ -345,6 +359,8 @@ class Engine:
     # -- mutations
     def start(self, description: str = "", project_id: int | None = None, tags: list[str] | None = None,
               billable: bool = False, at: datetime | None = None) -> dict[str, Any]:
+        check_text(description, tags)
+
         def run(state: dict[str, Any]) -> dict[str, Any]:
             when = at or self.clock()
             if state.get("running"):
@@ -385,6 +401,8 @@ class Engine:
 
     def add(self, description: str, project_id: int | None, tags: list[str] | None, billable: bool,
             start: datetime, stop: datetime) -> dict[str, Any]:
+        check_text(description, tags)
+
         def run(state: dict[str, Any]) -> dict[str, Any]:
             if stop <= start:
                 raise UsageError("stop must be after start")
@@ -412,6 +430,8 @@ class Engine:
         return self._guarded(run)
 
     def update(self, entry_id: Any, fields: dict[str, Any]) -> dict[str, Any]:
+        check_text(fields.get("description"), fields.get("tags"))
+
         def run(state: dict[str, Any]) -> dict[str, Any]:
             entry = find_entry(state, entry_id)
             if not entry:
@@ -469,6 +489,8 @@ class Engine:
         return {"state": state, "result": result}
 
     def _queue(self, state: dict[str, Any], op: dict[str, Any]) -> None:
+        if len(state.get("pending") or []) >= MAX_PENDING:
+            raise NetError(f"offline queue is full ({MAX_PENDING} changes); reconnect to sync first")
         state["pending"] = (state.get("pending") or []) + [{**op, "queuedAt": self._stamp()}]
         state["error"] = {"kind": "net", "message": "Offline; changes are queued", "at": self._stamp()}
 
