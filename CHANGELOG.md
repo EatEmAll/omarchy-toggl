@@ -70,6 +70,23 @@
   rewrites temporary IDs in the leftover queue to the real IDs, so a queued edit
   to an entry created offline is never silently skipped. Reported in marketplace
   review.
+- Offline queue integrity (audit):
+  - an error mid-replay (quota, rate limit, auth, a bad reply) keeps its progress,
+    so already-created entries are never re-sent as duplicates;
+  - changes Toggl permanently refuses are dropped and shown in a dismissible
+    panel banner instead of blocking the queue or vanishing silently;
+  - a create Toggl accepted is never re-sent, even if its reply is unreadable;
+  - while changes are still queued, new changes queue behind them (never
+    overtaking an older edit), and a sync doesn't overwrite the local view with
+    the server's;
+  - a timer started offline and stopped before it synced is posted as a finished
+    entry, so it can't stop a timer running elsewhere;
+  - temporary ids that have been replayed resolve to their real ids, and unknown
+    ones are an error instead of a silent "deleted";
+  - the idle prompt only acts on the entry it was raised for;
+  - `toggle` decides and acts in one transaction, temporary ids are always unique,
+    sign-out refuses to throw away queued changes (unless
+    `--discard-pending`), and the backend watchdog outlasts the CLI's own limits.
 - `uninstall.sh --purge` deletes only the files the plugin creates (no `rm -rf`)
   and no longer passes `--yes`, so Omarchy asks before removing the plugin.
 - The cache folder is created 0700 and state files 0600; the token-file folder is 0700.

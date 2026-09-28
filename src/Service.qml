@@ -153,7 +153,17 @@ Item {
       if (cb) cb(ok, result)
     }, String(token || "").trim())
   }
-  function logout(cb) { call(["auth", "logout"], cb) }
+  function logout(discardPending, cb) {
+    call(discardPending ? ["auth", "logout", "--discard-pending"] : ["auth", "logout"], cb)
+  }
+  function dismissDropped() { call(["dismiss-dropped"]) }
+
+  // Same entry, allowing for a temporary id whose create has since been replayed.
+  function sameEntry(a, b) {
+    if (a === b) return true
+    var aliases = root.snapshot && root.snapshot.idAliases ? root.snapshot.idAliases : {}
+    return aliases[String(a)] === b || aliases[String(b)] === a
+  }
   function doctor(cb) { call(["doctor"], cb) }
 
   function setUi(key, value) {
@@ -180,8 +190,10 @@ Item {
     var prompt = root.idlePrompt
     root.idlePrompt = null
     root.setUi("idleSince", null)
+    root.setUi("idleEntry", null)
     if (!prompt || mode === "keep") return
-    call(["idle-resolve", "--since", Model.toIso(prompt.since), "--mode", mode])
+    // The CLI refuses if a different entry is running by now.
+    call(["idle-resolve", "--since", Model.toIso(prompt.since), "--mode", mode, "--entry", String(prompt.entryId)])
   }
 
   function raiseIdle(sinceMs, reason) {
@@ -224,9 +236,12 @@ Item {
   }
 
   onRunningChanged: {
-    if (!root.running && root.idlePrompt) {
+    // The prompt belongs to one entry: drop it when that entry stops or another
+    // one takes over (not when only its temporary id became the real one).
+    if (root.idlePrompt && (!root.running || !root.sameEntry(root.running.id, root.idlePrompt.entryId))) {
       root.idlePrompt = null
       root.setUi("idleSince", null)
+      root.setUi("idleEntry", null)
     }
   }
 
@@ -253,7 +268,11 @@ Item {
     onLoaded: {
       try { root.ui = JSON.parse(text()) || {} } catch (e) { root.ui = {} }
       var since = Number(root.ui.idleSince || 0)
-      if (since > 0) Qt.callLater(function() { if (root.running) root.raiseIdle(since, "restart") })
+      var entry = root.ui.idleEntry
+      if (since > 0) Qt.callLater(function() {
+        if (root.running && entry !== undefined && root.sameEntry(root.running.id, entry)) root.raiseIdle(since, "restart")
+        else { root.setUi("idleSince", null); root.setUi("idleEntry", null) }
+      })
     }
   }
 
@@ -332,6 +351,7 @@ Item {
       if (isIdle) {
         var since = Date.now() - timeout * 1000
         root.setUi("idleSince", since)
+        if (root.running) root.setUi("idleEntry", root.running.id)
       } else {
         var start = Number(root.ui.idleSince || 0)
         if (start > 0 && root.running) root.raiseIdle(start, "idle")

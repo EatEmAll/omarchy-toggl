@@ -120,9 +120,12 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("delete")
     s.add_argument("entry_ids", nargs="+")
 
+    sub.add_parser("dismiss-dropped", help="clear the list of offline changes Toggl refused")
+
     s = sub.add_parser("idle-resolve")
     s.add_argument("--since", required=True)
     s.add_argument("--mode", choices=["keep", "discard", "discard-continue"], required=True)
+    s.add_argument("--entry", help="id of the entry the idle prompt was raised for")
 
     s = sub.add_parser("ui-set", help="store a UI bookkeeping value in ui.json")
     s.add_argument("key")
@@ -131,6 +134,8 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("auth")
     s.add_argument("action", choices=["login", "status", "logout"])
     s.add_argument("--stdin", action="store_true", help="read the token from stdin")
+    s.add_argument("--discard-pending", action="store_true",
+                   help="logout: also discard offline changes that are not synced yet")
 
     sub.add_parser("doctor")
     return p
@@ -232,7 +237,13 @@ def _dispatch(args: argparse.Namespace, engine: Engine, as_text: bool) -> int:
     if cmd == "delete":
         return _ok(engine.delete(args.entry_ids), as_text)
     if cmd == "idle-resolve":
-        return _ok(engine.idle_resolve(parse_when(args.since), args.mode), as_text)
+        return _ok(engine.idle_resolve(parse_when(args.since), args.mode, args.entry), as_text)
+    if cmd == "dismiss-dropped":
+        with engine.store.locked():
+            state = engine.store.load()
+            state["dropped"] = []
+            engine.store.save(state)
+        return _ok({"state": state}, as_text, "dismissed")
     if cmd == "ui-set":
         value = json.loads(args.value)
         with engine.store.locked():
@@ -253,13 +264,18 @@ def _dispatch(args: argparse.Namespace, engine: Engine, as_text: bool) -> int:
 
 def _auth(args: argparse.Namespace, engine: Engine, as_text: bool) -> int:
     if args.action == "logout":
+        with engine.store.locked():
+            queued = len(engine.store.load().get("pending") or [])
+        if queued and not args.discard_pending:
+            raise UsageError(f"{queued} offline change(s) are not synced yet; sync first, "
+                             "or sign out with --discard-pending to throw them away")
         clear_token()
         with engine.store.locked():
             state = engine.store.load()
             state["auth"] = {"ok": False, "source": None, "user": None, "workspaceId": None, "workspaces": []}
             state.update({"running": None, "entries": [], "ranges": {}, "projects": [], "tags": [],
                           "stats": {}, "pending": [], "lastSyncAt": None, "lastMetaSyncAt": None,
-                          "error": None})
+                          "error": None, "dropped": [], "idAliases": {}})
             engine.store.save(state)
         return _ok({"state": state}, as_text, "signed out")
     if args.action == "status":

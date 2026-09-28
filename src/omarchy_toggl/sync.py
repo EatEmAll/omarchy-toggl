@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 from . import stats as stats_mod
-from .api import Api, ApiError, AuthError, Conflict, NetError, NotFound, QuotaError
+from .api import Api, ApiError, AuthError, Conflict, NetError, NotFound, QuotaError, RateError
 from .store import Store, remember_range
 from .timeutil import local_tz, now_utc, parse_iso, to_api
 from .token import TokenError, get_token
@@ -29,6 +29,9 @@ META_TTL = 12 * 3600
 QUOTA_FLOOR = 3
 MAX_PENDING = 500          # offline changes kept for replay
 MAX_REPLAY = 50            # replayed per sync, so one run stays short
+MAX_ALIASES = 200          # remembered tempId -> real id pairs
+MAX_DROPPED = 20           # reported offline changes Toggl refused
+TRANSIENT = (NetError, RateError, QuotaError, AuthError)   # keep the op and retry later
 MAX_DESCRIPTION = 3000     # Toggl's own description limit
 MAX_TAGS = 50
 MAX_TAG_LENGTH = 128
@@ -370,6 +373,11 @@ class Engine:
                 return {"skipped": "quota"}
             self.api()
             self._replay(state)
+            if state.get("pending"):
+                # The per-sync replay cap left changes queued: don't overwrite the
+                # optimistic local view with the server's until they are applied.
+                state["error"] = None
+                return {"synced": False, "pending": len(state["pending"])}
             stale_meta = now - (state.get("lastMetaSyncAt") or 0) > META_TTL
             if meta or meta_needed or stale_meta or not (state.get("auth") or {}).get("ok"):
                 self._fetch_meta(state)
@@ -385,7 +393,7 @@ class Engine:
             state["error"] = None
             return {"synced": True}
 
-        return self._guarded(run)
+        return self._guarded(run, drain=False)
 
     def _fetch_window(self, state: dict[str, Any]) -> None:
         tz = local_tz()
@@ -419,6 +427,9 @@ class Engine:
 
     def fetch_range(self, first: str, last: str, force: bool = False) -> dict[str, Any]:
         def run(state: dict[str, Any]) -> dict[str, Any]:
+            self._drain(state)
+            if state.get("pending"):
+                return {"skipped": "pending"}
             key = f"{first}_{last}"
             cached = (state.get("ranges") or {}).get(key)
             if cached and not force and time.time() - (cached.get("fetchedAt") or 0) < 600:
@@ -434,7 +445,7 @@ class Engine:
                                         "fetchedAt": int(time.time())})
             return {"fetched": len(entries)}
 
-        return self._guarded(run)
+        return self._guarded(run, drain=False)
 
     # -- mutations
     def start(self, description: str = "", project_id: int | None = None, tags: list[str] | None = None,
@@ -452,19 +463,19 @@ class Engine:
         return self._guarded(run)
 
     def continue_entry(self, entry_id: Any = None) -> dict[str, Any]:
-        def run(state: dict[str, Any]) -> dict[str, Any]:
-            source = find_entry(state, entry_id) if entry_id is not None else \
-                next(iter(state.get("entries") or []), None)
-            if not source:
-                raise UsageError("nothing to continue")
-            if state.get("running"):
-                self._stop(state, None)
-            body = {"description": source.get("description") or "", "project_id": source.get("projectId"),
-                    "tags": source.get("tags") or [], "billable": bool(source.get("billable")),
-                    "start": to_api(self.clock()), "duration": -1}
-            return self._create(state, body)
+        return self._guarded(lambda state: self._continue(state, entry_id))
 
-        return self._guarded(run)
+    def _continue(self, state: dict[str, Any], entry_id: Any = None) -> dict[str, Any]:
+        source = find_entry(state, self._resolve(state, entry_id)) if entry_id is not None else \
+            next(iter(state.get("entries") or []), None)
+        if not source:
+            raise UsageError("nothing to continue")
+        if state.get("running"):
+            self._stop(state, None)
+        body = {"description": source.get("description") or "", "project_id": source.get("projectId"),
+                "tags": source.get("tags") or [], "billable": bool(source.get("billable")),
+                "start": to_api(self.clock()), "duration": -1}
+        return self._create(state, body)
 
     def stop(self, at: datetime | None = None) -> dict[str, Any]:
         def run(state: dict[str, Any]) -> dict[str, Any]:
@@ -475,9 +486,9 @@ class Engine:
         return self._guarded(run)
 
     def toggle(self) -> dict[str, Any]:
-        with self.store.locked():
-            running = self.store.load().get("running")
-        return self.stop() if running else self.continue_entry()
+        # Decide and act in one transaction, so a concurrent change can't slip in between.
+        return self._guarded(lambda state: self._stop(state, None) if state.get("running")
+                             else self._continue(state, None))
 
     def add(self, description: str, project_id: int | None, tags: list[str] | None, billable: bool,
             start: datetime, stop: datetime) -> dict[str, Any]:
@@ -497,7 +508,7 @@ class Engine:
 
     def duplicate(self, entry_id: Any) -> dict[str, Any]:
         def run(state: dict[str, Any]) -> dict[str, Any]:
-            source = find_entry(state, entry_id)
+            source = find_entry(state, self._resolve(state, entry_id))
             if not source or not source.get("stop"):
                 raise UsageError("only finished entries can be duplicated")
             start, stop = parse_iso(source["start"]), parse_iso(source["stop"])
@@ -513,7 +524,7 @@ class Engine:
         check_text(fields.get("description"), fields.get("tags"))
 
         def run(state: dict[str, Any]) -> dict[str, Any]:
-            entry = find_entry(state, entry_id)
+            entry = find_entry(state, self._resolve(state, entry_id))
             if not entry:
                 raise UsageError(f"entry {entry_id} not found in cache")
             body = self._update_body(entry, fields)
@@ -525,31 +536,40 @@ class Engine:
         def run(state: dict[str, Any]) -> dict[str, Any]:
             done = []
             for entry_id in entry_ids:
-                entry = find_entry(state, entry_id)
-                wid = int((entry or {}).get("wid") or self._wid(state))
-                eid = int(entry_id)
+                eid = self._resolve(state, entry_id)
                 if eid < 0:
-                    state["pending"] = [p for p in state.get("pending") or [] if p.get("tempId") != eid]
+                    # Still only queued: drop its create (and anything queued for it).
+                    pending = state.get("pending") or []
+                    if not any(p.get("tempId") == eid for p in pending):
+                        raise UsageError(f"entry {entry_id} not found")
+                    state["pending"] = [p for p in pending if p.get("tempId") != eid and p.get("id") != eid]
                     remove_entry(state, eid)
                     done.append(eid)
                     continue
-                try:
-                    self.api().delete(wid, eid)
-                except NotFound:
-                    pass
-                except NetError:
-                    self._queue(state, {"op": "delete", "wid": wid, "id": eid})
+                entry = find_entry(state, eid)
+                wid = int((entry or {}).get("wid") or self._wid(state))
+                if state.get("pending"):
+                    self._queue(state, {"op": "delete", "wid": wid, "id": eid})   # keep queue order
+                else:
+                    try:
+                        self.api().delete(wid, eid)
+                    except NotFound:
+                        pass
+                    except NetError:
+                        self._queue(state, {"op": "delete", "wid": wid, "id": eid})
                 remove_entry(state, eid)
                 done.append(eid)
             return {"deleted": done}
 
         return self._guarded(run)
 
-    def idle_resolve(self, since: datetime, mode: str) -> dict[str, Any]:
+    def idle_resolve(self, since: datetime, mode: str, entry_id: Any = None) -> dict[str, Any]:
         def run(state: dict[str, Any]) -> dict[str, Any]:
             running = state.get("running")
             if mode == "keep" or not running:
                 return {"kept": True}
+            if entry_id is not None and running.get("id") != self._resolve(state, entry_id):
+                raise UsageError("the timer changed since the idle prompt; nothing was changed")
             start = parse_iso(running.get("start"))
             cut = max(since, start) if start else since
             copy = dict(running)
@@ -564,9 +584,40 @@ class Engine:
         return self._guarded(run)
 
     # -- mutation internals
-    def _guarded(self, fn: Callable[[dict[str, Any]], Any]) -> dict[str, Any]:
-        state, result = self.transaction(fn)
+    def _guarded(self, fn: Callable[[dict[str, Any]], Any], drain: bool = True) -> dict[str, Any]:
+        def run(state: dict[str, Any]) -> Any:
+            # Apply queued changes first so a new change never overtakes an
+            # older queued one; if some stay queued, new ones queue behind them.
+            # (sync and range fetches replay/drain on their own terms.)
+            if drain:
+                self._drain(state)
+            return fn(state)
+        state, result = self.transaction(run)
         return {"state": state, "result": result}
+
+    def _drain(self, state: dict[str, Any]) -> None:
+        if not state.get("pending"):
+            return
+        try:
+            self._replay(state)
+        except ApiError as exc:
+            state["error"] = _error(exc, self._stamp())
+
+    def _resolve(self, state: dict[str, Any], entry_id: Any) -> int:
+        """A temporary id whose create has been replayed resolves to the real id."""
+        try:
+            eid = int(entry_id)
+        except (TypeError, ValueError):
+            raise UsageError(f"invalid entry id: {entry_id}") from None
+        if eid < 0:
+            real = (state.get("idAliases") or {}).get(str(eid))
+            if isinstance(real, int):
+                return real
+        return eid
+
+    def _new_temp_id(self, state: dict[str, Any]) -> int:
+        existing = [p.get("tempId") for p in state.get("pending") or [] if isinstance(p.get("tempId"), int)]
+        return min(existing + [-int(time.time() * 1000)]) - 1
 
     def _queue(self, state: dict[str, Any], op: dict[str, Any]) -> None:
         if len(state.get("pending") or []) >= MAX_PENDING:
@@ -576,14 +627,19 @@ class Engine:
 
     def _create(self, state: dict[str, Any], body: dict[str, Any]) -> dict[str, Any]:
         wid = self._wid(state)
+        if state.get("pending"):
+            return self._create_queued(state, wid, body)
         try:
             raw = self.api().create(wid, body)
         except NetError:
-            temp_id = -int(time.time() * 1000)
-            self._queue(state, {"op": "create", "wid": wid, "body": body, "tempId": temp_id})
-            fake = {**body, "id": temp_id, "workspace_id": wid, "stop": body.get("stop")}
-            return apply_entry(state, _entry(fake))
+            return self._create_queued(state, wid, body)
         return apply_entry(state, _entry(raw))
+
+    def _create_queued(self, state: dict[str, Any], wid: int, body: dict[str, Any]) -> dict[str, Any]:
+        temp_id = self._new_temp_id(state)
+        self._queue(state, {"op": "create", "wid": wid, "body": body, "tempId": temp_id})
+        fake = {**body, "id": temp_id, "workspace_id": wid, "stop": body.get("stop")}
+        return apply_entry(state, _entry(fake))
 
     def _stop(self, state: dict[str, Any], at: datetime | None) -> dict[str, Any]:
         running = state["running"]
@@ -597,7 +653,7 @@ class Engine:
         if start and at < start:
             raise UsageError("stop time is before the entry started")
         body = {"stop": to_api(at), "duration": int((at - start).total_seconds()) if start else None}
-        if running["id"] < 0:
+        if running["id"] < 0 or state.get("pending"):
             self._queue(state, {"op": "update", "wid": wid, "id": running["id"], "body": body})
             return apply_entry(state, {**running, "stop": body["stop"], "seconds": body["duration"]})
         try:
@@ -657,7 +713,7 @@ class Engine:
         if "stop" in body:
             optimistic["stop"] = body["stop"]
             optimistic["seconds"] = body.get("duration")
-        if int(entry["id"]) < 0:
+        if int(entry["id"]) < 0 or state.get("pending"):
             self._queue(state, {"op": "update", "wid": wid, "id": entry["id"], "body": body})
             return apply_entry(state, optimistic)
         try:
@@ -668,47 +724,104 @@ class Engine:
         return apply_entry(state, _entry(raw))
 
     def _replay(self, state: dict[str, Any]) -> None:
-        pending = list(state.get("pending") or [])
+        """Apply queued offline changes in order.
+
+        * transient failures (network, 429, 402 quota, 403) stop the replay and
+          keep that op and the rest, with ids rewritten via this run's mapping;
+        * permanent refusals (404/409/other 4xx) drop that op and report it in
+          ``state["dropped"]`` instead of blocking the queue or failing silently;
+        * a create Toggl accepted is never re-sent, even if its reply is unreadable;
+        * a queued running create followed by its queued stop is posted finished,
+          so it can't stop a timer that is running on the server now.
+        """
+        pending = _merge_stops(list(state.get("pending") or []))
         if not pending:
+            state["pending"] = []
             return
         mapping: dict[int, int] = {}
-        remaining: list[dict[str, Any]] = []
+        aliases = dict(state.get("idAliases") or {})
+        dropped: list[dict[str, Any]] = []
+        index = 0
 
         def carry(rest: list[dict[str, Any]]) -> list[dict[str, Any]]:
-            # Leftover ops may refer to entries created earlier in this run by
-            # their temporary id; rewrite those to the real id so a later run
-            # still applies them instead of skipping them.
             return [{**op, "id": mapping[op["id"]]} if isinstance(op.get("id"), int) and op["id"] in mapping
                     else op for op in rest]
 
-        for index, op in enumerate(pending):
-            if index >= MAX_REPLAY:
-                state["pending"] = carry(pending[index:])   # the rest drains on the next syncs
-                return
-            eid = op.get("id")
-            if isinstance(eid, int) and eid in mapping:
-                eid = mapping[eid]
-            try:
-                if op["op"] == "create":
-                    raw = self.api().create(op["wid"], op["body"])
-                    mapping[op["tempId"]] = _entry(raw)["id"]
-                    remove_entry(state, op["tempId"])
-                    apply_entry(state, _entry(raw))
-                elif isinstance(eid, int) and eid < 0:
-                    continue  # its create was dropped; nothing to apply
-                elif op["op"] == "update":
-                    raw = self.api().update(op["wid"], eid, op["body"])
-                    apply_entry(state, _entry(raw))
-                elif op["op"] == "delete":
-                    self.api().delete(op["wid"], eid)
-            except (NotFound, Conflict):
-                continue
-            except NetError:
-                remaining = carry(pending[index:])
-                break
-        state["pending"] = remaining
-        if remaining:
-            raise NetError("still offline; changes remain queued")
+        def drop(op: dict[str, Any], reason: str) -> None:
+            dropped.append({"op": op.get("op"), "description": (op.get("body") or {}).get("description"),
+                            "reason": reason[:300], "at": self._stamp()})
+
+        try:
+            for index, op in enumerate(pending):
+                if index >= MAX_REPLAY:
+                    state["pending"] = carry(pending[index:])   # the rest drains on the next syncs
+                    return
+                eid = op.get("id")
+                if isinstance(eid, int) and eid in mapping:
+                    eid = mapping[eid]
+                try:
+                    if op["op"] == "create":
+                        raw = self.api().create(op["wid"], op["body"])
+                        remove_entry(state, op["tempId"])
+                        entry = normalize(raw)
+                        if entry is None:   # created, but the reply is unreadable: never re-send it
+                            drop(op, "created, but Toggl's reply was unreadable; it appears after the next sync")
+                            continue
+                        mapping[op["tempId"]] = entry["id"]
+                        aliases[str(op["tempId"])] = entry["id"]
+                        apply_entry(state, entry)
+                    elif isinstance(eid, int) and eid < 0:
+                        continue            # its create was dropped (and reported)
+                    elif op["op"] == "update":
+                        entry = normalize(self.api().update(op["wid"], eid, op["body"]))
+                        if entry is not None:
+                            apply_entry(state, entry)
+                    elif op["op"] == "delete":
+                        self.api().delete(op["wid"], eid)
+                        remove_entry(state, eid)
+                except TRANSIENT:
+                    raise
+                except (NotFound, Conflict) as exc:
+                    if op["op"] != "delete":            # deleting something already gone is fine
+                        drop(op, f"Toggl refused it: {exc}")
+                        if op["op"] == "create":
+                            remove_entry(state, op["tempId"])
+                except ApiError as exc:
+                    drop(op, f"Toggl refused it: {exc}")
+                    if op["op"] == "create":
+                        remove_entry(state, op["tempId"])
+            state["pending"] = []
+        except BaseException:
+            state["pending"] = carry(pending[index:])
+            raise
+        finally:
+            state["idAliases"] = dict(list(aliases.items())[-MAX_ALIASES:])
+            if dropped:
+                state["dropped"] = ((state.get("dropped") or []) + dropped)[-MAX_DROPPED:]
+
+
+def _merge_stops(pending: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Fold a queued stop into its queued running create (post it finished)."""
+    out: list[dict[str, Any]] = []
+    consumed: set[int] = set()
+    for i, op in enumerate(pending):
+        if i in consumed:
+            continue
+        body = op.get("body") or {}
+        if op.get("op") == "create" and body.get("duration") == -1 and isinstance(op.get("tempId"), int):
+            for j in range(i + 1, len(pending)):
+                later = pending[j]
+                lbody = later.get("body") or {}
+                if later.get("op") == "update" and later.get("id") == op["tempId"] and lbody.get("stop"):
+                    op = {**op, "body": {**body, "stop": lbody["stop"], "duration": lbody.get("duration")}}
+                    rest = {k: v for k, v in lbody.items() if k not in ("stop", "duration")}
+                    if rest:
+                        pending[j] = {**later, "body": rest}
+                    else:
+                        consumed.add(j)
+                    break
+        out.append(op)
+    return out
 
 
 def _default_api() -> tuple[Api, str]:

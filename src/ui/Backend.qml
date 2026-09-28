@@ -13,7 +13,7 @@ Item {
   // The CLI bounds its own run (per-request deadlines, a 120 s budget, a 60 s
   // lock wait); this watchdog is the last line so one stuck run can never
   // block the queue for good.
-  property int watchdogMs: 180000
+  property int watchdogMs: 240000     // > 60 s lock wait + 120 s run budget + start-up
   property bool timedOut: false
   property var queue: []
   property var current: null

@@ -144,12 +144,12 @@ Flickable {
         ActionChip {
           id: signOut
           anchors.verticalCenter: parent.verticalCenter
-          text: "Sign out"
+          text: root.svc && root.svc.pendingCount > 0 ? "Sign out (discard " + root.svc.pendingCount + " queued)" : "Sign out"
           destructive: true
           foreground: ctx.foreground
           accent: ctx.accent
           fontFamily: ctx.fontFamily
-          onClicked: root.svc.logout()
+          onClicked: root.svc.logout(root.svc.pendingCount > 0)
         }
       }
 

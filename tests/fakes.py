@@ -82,6 +82,24 @@ class FakeOpener:
 NOW = datetime(2026, 9, 26, 12, 0, 0, tzinfo=timezone.utc)
 
 
+def isolated_env():
+    """Environment for running the CLI in a subprocess without ever touching the
+    real user's cache, config or keyring: temp XDG dirs and a stub `secret-tool`
+    first on PATH that only logs its calls. Returns (env, log_path)."""
+    import os
+    base = Path(tempfile.mkdtemp(prefix="omarchy-toggl-env-"))
+    stub_dir = base / "bin"
+    stub_dir.mkdir()
+    log = base / "secret-tool.log"
+    stub = stub_dir / "secret-tool"
+    stub.write_text(f'#!/bin/sh\necho "$*" >> "{log}"\nexit 1\n')
+    stub.chmod(0o755)
+    env = {**os.environ, "XDG_CACHE_HOME": str(base / "cache"), "XDG_CONFIG_HOME": str(base / "config"),
+           "PATH": f"{stub_dir}:{os.environ.get('PATH', '')}"}
+    env.pop("TOGGL_API_TOKEN", None)
+    return env, log
+
+
 def make_engine(opener, clock=lambda: NOW):
     tmp = tempfile.mkdtemp(prefix="omarchy-toggl-test-")
     store = Store(Path(tmp))

@@ -184,7 +184,8 @@ class RealOpenerRedirect(unittest.TestCase):
 
 class LocalInputLimits(unittest.TestCase):
     def test_stdin_token_is_bounded(self):
-        env = {**os.environ, "XDG_CONFIG_HOME": tempfile.mkdtemp(), "XDG_CACHE_HOME": tempfile.mkdtemp()}
+        from tests.fakes import isolated_env
+        env, _ = isolated_env()                          # never the real keyring
         out = subprocess.run([sys.executable, str(ROOT / "src/toggl.py"), "auth", "login", "--stdin"],
                              input="a" * (1024 * 1024) + "\n", capture_output=True, text=True, env=env, timeout=30)
         self.assertEqual(out.returncode, 3, out.stdout + out.stderr)
@@ -384,23 +385,24 @@ class StateBounds(unittest.TestCase):
         self.assertEqual(len(state["auth"]["workspaces"][0]["name"]), 256)
 
     def test_state_file_stays_bounded_and_queue_is_kept(self):
+        import json as _json
         from src.omarchy_toggl import sync as sync_mod
-        big = [self.entry(i, "d" * 2900) for i in range(2500)]   # ~7.3 MB response, > 4 MB state cap
-        opener = FakeOpener().on("GET", "/me", lambda p, b: ME).on("GET", "/me/time_entries", lambda p, b: big)
-        engine, store = make_engine(opener)
-        with store.locked():
-            state = store.load()
-            state["pending"] = [{"op": "delete", "wid": 7, "id": -1 - i, "tempId": -1 - i} for i in range(5)]
-            store.save(state)
-        opener.offline = False
-        with mock.patch.object(sync_mod, "MAX_REPLAY", 0):
-            engine.sync(force=True)
-        size = (store.dir / "state.json").stat().st_size
+        big = [sync_mod.normalize(self.entry(i, "d" * 2900)) for i in range(2500)]   # ~7.5 MB of entries
+        pending = [{"op": "update", "wid": 7, "id": i + 1, "body": {"description": "q" * 2900}} for i in range(400)]
+        state = {"schema": 1, "entries": big, "pending": pending,
+                 "ranges": {"a_b": {"entries": big[:1000], "fetchedAt": 1}}}
+        sync_mod.compact(state)
+        size = len(_json.dumps(state, separators=(",", ":")).encode())
         self.assertLessEqual(size, sync_mod.MAX_STATE_BYTES)
-        with store.locked():
-            loaded = store.load()
-        self.assertEqual(len(loaded["pending"]), 5)
-        self.assertGreater(len(loaded["entries"]), 0)
+        self.assertEqual(len(state["pending"]), 400)          # never dropped
+        self.assertEqual(state["ranges"], {})                   # ranges go first
+        self.assertGreater(len(state["entries"]), 0)
+        # and the engine applies it on every save
+        opener = FakeOpener().on("GET", "/me", lambda p, b: ME).on(
+            "GET", "/me/time_entries", lambda p, b: [self.entry(i, "d" * 2900) for i in range(2500)])
+        engine, store = make_engine(opener)
+        engine.sync(force=True)
+        self.assertLessEqual((store.dir / "state.json").stat().st_size, sync_mod.MAX_STATE_BYTES)
 
     def test_oversized_state_is_never_overwritten(self):
         from src.omarchy_toggl import safefs
@@ -435,7 +437,7 @@ class ReplayContinuity(unittest.TestCase):
 
         def update(p, b):
             self.updates.append(p)
-            return entry(900, "2026-09-26T10:00:00Z", b.get("stop"), desc="Offline", pid=None)
+            return entry(900, "2026-09-26T10:00:00Z", None, desc=b.get("description", "Offline"), pid=None)
         self.opener.on("PUT", "/workspaces/7/time_entries/", update)
         self.engine, self.store = make_engine(self.opener)
         self.engine.sync(force=True)
@@ -447,8 +449,7 @@ class ReplayContinuity(unittest.TestCase):
                 [{"op": "create", "wid": 7, "tempId": -5,
                   "body": {"description": "Offline", "start": "2026-09-26T10:00:00Z", "duration": -1}}]
                 + [{"op": "delete", "wid": 7, "id": 1000 + i} for i in range(filler)]
-                + [{"op": "update", "wid": 7, "id": -5,
-                    "body": {"stop": "2026-09-26T11:00:00Z", "duration": 3600}}])
+                + [{"op": "update", "wid": 7, "id": -5, "body": {"description": "Renamed"}}])
             self.store.save(state)
 
     def test_update_survives_the_per_sync_cap(self):

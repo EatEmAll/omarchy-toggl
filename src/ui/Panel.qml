@@ -428,6 +428,21 @@ Panel {
         }
         Banner {
           width: parent.width
+          readonly property var dropped: root.snapshot && root.snapshot.dropped ? root.snapshot.dropped : []
+          visible: dropped.length > 0
+          icon: "󰀦"
+          urgent: true
+          text: dropped.length === 1
+            ? "An offline change couldn't be applied: " + (dropped[0].description ? "'" + dropped[0].description + "' — " : "") + dropped[0].reason
+            : dropped.length + " offline changes couldn't be applied (latest: " + dropped[dropped.length - 1].reason + ")"
+          actionText: "Dismiss"
+          foreground: root.foreground
+          accent: root.accent
+          fontFamily: root.fontFamily
+          onAction: root.svc.dismissDropped()
+        }
+        Banner {
+          width: parent.width
           visible: !!(root.svc && root.svc.lastError)
           icon: "󰀦"
           urgent: true
