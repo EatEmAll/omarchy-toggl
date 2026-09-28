@@ -83,13 +83,17 @@ cd omarchy-toggl
 ```
 
 `install-local.sh` does the following:
-- copies the plugin into the Omarchy plugin folder. It only writes into a folder
-  it created itself, recorded in a `.omarchy-toggl-install` marker that stores
-  each installed file's SHA-256. When updating:
+- copies the plugin's tracked, regular files into the Omarchy plugin folder (untracked
+  files in your checkout are never installed). It only writes into a folder it created
+  itself, recorded in a `.omarchy-toggl-install` marker that stores each installed
+  file's SHA-256. Before writing anything it checks every file and parent folder:
   - it replaces a file only if it's unchanged since the last install;
-  - if you edited or added any plugin file, it lists them and changes nothing;
+  - if you edited or added any plugin file, or a file or folder in the plugin is a
+    symlink, it lists them and changes nothing;
   - it deletes files dropped by a new version only if they're unchanged;
   - it refuses to touch any other existing folder;
+  - the marker is updated by temp file + rename before and after copying, so an
+    interrupted run can simply be run again;
 - installs the `omarchy-toggl` command. It never replaces a different or edited
   file with that name, and `uninstall.sh` removes it only if it's unchanged;
 - enables the widget with `omarchy plugin enable`, which is its only change to `shell.json`.
@@ -112,8 +116,8 @@ rm -rf ~/.cache/omarchy-toggl                  # cached entries, if you skipped 
 ```
 
 From a clone, `./scripts/uninstall.sh --purge` does all of the above, but deletes
-only the files the plugin creates, and Omarchy asks before removing the plugin
-folder. It only reminds you about keybindings or menu entries you added by hand.
+only the files the plugin creates, never through a symlink. Omarchy asks before
+removing the plugin folder, and if you decline, nothing else is changed. It only reminds you about keybindings or menu entries you added by hand.
 
 ## Sign in
 
@@ -250,6 +254,12 @@ plugin stays within it:
   held in the shell's QML scene or passed on a command line. The panel pipes it
   to the CLI over stdin.
 - **Local cache.** Cached entries live in `~/.cache/omarchy-toggl/`. The folder is mode 0700 and its files 0600.
+- **Safe file handling.** The token, cache and settings files are written to a fresh
+  random 0600 temp file and renamed into place, through a folder opened with
+  `O_NOFOLLOW` and owner-checked. An existing symlink or hard link is replaced,
+  never written through, and a symlinked folder is refused. Reads accept only
+  regular files. The plugin never writes into its own install folder (no
+  `__pycache__`). All of this is covered by tests that run in CI.
 - **Network.** The plugin only talks to `api.track.toggl.com`.
 - **Signing out.** `omarchy-toggl auth logout` removes the token and clears the cache.
 
@@ -261,7 +271,7 @@ so review the code before installing.
 ```bash
 ./scripts/test.sh            # Python unittest + deno tests for src/ui/Model.js + manifest validation
 qmllint -I /usr/share/omarchy/shell src/BarWidget.qml   # optional lint, as the Omarchy docs suggest
-./scripts/install-local.sh   # redeploy; widget and panel QML hot-reload
+./scripts/install-local.sh   # redeploy tracked files (git add new ones); widget and panel QML hot-reload
 omarchy restart shell        # needed after changing src/Service.qml or after a QML type failed to load
 quickshell log -p /usr/share/omarchy/shell | grep -i toggl
 ```

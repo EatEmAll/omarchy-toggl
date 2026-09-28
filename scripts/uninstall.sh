@@ -1,36 +1,43 @@
 #!/usr/bin/env bash
-# Remove the plugin and everything it created.
+# Remove the plugin and what it created.
 #
 #   scripts/uninstall.sh           remove the plugin and the omarchy-toggl CLI
 #   scripts/uninstall.sh --purge   also sign out (delete the API token from the
 #                                  keyring / token file) and delete the cache
 #
-# Keybindings or menu entries you added by hand are yours; the script only
-# reminds you about them.
+# Order matters: the plugin is removed first (Omarchy asks for confirmation).
+# Only if that succeeds are the CLI wrapper, token and cache touched, so a
+# declined removal changes nothing. Only files the plugin creates are deleted,
+# never through a symlink. Keybindings or menu entries you added by hand are
+# yours; the script only reminds you about them.
 set -euo pipefail
 
 id="io.github.eatemall.toggl"
+plugin="$HOME/.config/omarchy/plugins/$id"
 wrapper="$HOME/.local/bin/omarchy-toggl"
-cli="$HOME/.config/omarchy/plugins/$id/src/toggl.py"
-marker="$HOME/.config/omarchy/plugins/$id/.omarchy-toggl-install"
-# The wrapper is removed only if it is byte-for-byte what install-local.sh
-# recorded; read that before the plugin folder (and its marker) goes away.
-wrapper_hash=$(grep -m1 '  @wrapper$' "$marker" 2>/dev/null | cut -c1-64 || true)
+marker="$plugin/.omarchy-toggl-install"
 purge=0
 [[ "${1:-}" == "--purge" ]] && purge=1
 
-if (( purge )); then
-  # Sign out through the plugin when it is still installed; otherwise (or if
-  # that fails) clear the keyring entry directly so the token never lingers.
-  if [[ -f "$cli" ]]; then python3 "$cli" --text auth logout || true; fi
-  if command -v secret-tool >/dev/null; then
-    secret-tool clear service omarchy-toggl account api-token 2>/dev/null || true
-  fi
+xdg() {  # absolute $XDG_* value or the default (relative values are ignored)
+  local value=$1 fallback=$2
+  [[ "$value" == /* ]] && printf '%s' "$value" || printf '%s' "$fallback"
+}
+
+# The wrapper is removed only if it is byte-for-byte what install-local.sh
+# recorded. Read that before the plugin folder goes away, and only from a
+# marker this installer wrote (a plain file in a non-git folder).
+wrapper_hash=""
+if [[ -f "$marker" && ! -L "$marker" && ! -e "$plugin/.git" && ! -L "$plugin" ]]; then
+  wrapper_hash=$(grep -m1 -E '^[0-9a-f]{64}  @wrapper$' -- "$marker" | cut -c1-64 || true)
 fi
 
 if omarchy plugin list --json 2>/dev/null | jq -e --arg id "$id" '.[] | select(.id == $id)' >/dev/null; then
-  # Let Omarchy show its own confirmation before it deletes the plugin folder.
-  omarchy plugin remove "$id"
+  # Omarchy shows its own confirmation; if it is declined or fails, stop here.
+  if ! omarchy plugin remove "$id"; then
+    echo "The plugin was not removed; nothing else was changed." >&2
+    exit 1
+  fi
 fi
 
 if [[ -f "$wrapper" && ! -L "$wrapper" ]]; then
@@ -41,24 +48,29 @@ if [[ -f "$wrapper" && ! -L "$wrapper" ]]; then
   fi
 fi
 
+# Delete only our own files inside a real (non-symlinked) folder, then the
+# folder itself if it is now empty.
+remove_ours() {  # dir name-pattern...
+  local dir=$1; shift
+  if [[ -L "$dir" ]]; then
+    echo "note: $dir is a symlink; left it alone"
+    return 0
+  fi
+  [[ -d "$dir" ]] || return 0
+  local args=() name
+  for name in "$@"; do args+=(-o -name "$name"); done
+  find "$dir" -mindepth 1 -maxdepth 1 -type f \( "${args[@]:1}" \) -delete 2>/dev/null || true
+  rmdir -- "$dir" 2>/dev/null || true
+}
+
 if (( purge )); then
-  # Remove only the files this plugin creates, then the folders if now empty.
-  cache="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy-toggl"
-  config="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy-toggl"
-  # Never follow a symlinked folder: only delete inside real directories.
-  if [[ -d "$cache" && ! -L "$cache" ]]; then
-    rm -f -- "$cache/state.json" "$cache/ui.json" "$cache/state.lock"
-    find "$cache" -maxdepth 1 \( -name '.state.json.*.tmp' -o -name '.ui.json.*.tmp' \) -type f -delete 2>/dev/null || true
-    rmdir -- "$cache" 2>/dev/null || true
-  elif [[ -L "$cache" ]]; then
-    echo "note: $cache is a symlink; left it alone"
+  if command -v secret-tool >/dev/null; then
+    secret-tool clear service omarchy-toggl account api-token 2>/dev/null || true
   fi
-  if [[ -d "$config" && ! -L "$config" ]]; then
-    rm -f -- "$config/token"
-    rmdir -- "$config" 2>/dev/null || true
-  elif [[ -L "$config" ]]; then
-    echo "note: $config is a symlink; left it alone"
-  fi
+  cache="$(xdg "${XDG_CACHE_HOME:-}" "$HOME/.cache")/omarchy-toggl"
+  config="$(xdg "${XDG_CONFIG_HOME:-}" "$HOME/.config")/omarchy-toggl"
+  remove_ours "$cache" state.json ui.json state.lock '.state.json.*.tmp' '.ui.json.*.tmp'
+  remove_ours "$config" token '.token.*.tmp'
 fi
 
 echo "Removed $id."

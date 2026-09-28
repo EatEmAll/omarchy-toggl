@@ -18,7 +18,9 @@ Item {
 
   readonly property string pluginId: "io.github.eatemall.toggl"
   readonly property string cliPath: Qt.resolvedUrl("toggl.py").toString().replace(/^file:\/\//, "")
-  readonly property string cacheDir: (Quickshell.env("XDG_CACHE_HOME") || (Quickshell.env("HOME") + "/.cache")) + "/omarchy-toggl"
+  // Same rule as the backend: a relative $XDG_CACHE_HOME must be ignored.
+  readonly property string xdgCache: String(Quickshell.env("XDG_CACHE_HOME") || "")
+  readonly property string cacheDir: (xdgCache.charAt(0) === "/" ? xdgCache : Quickshell.env("HOME") + "/.cache") + "/omarchy-toggl"
 
   // Widget settings: pushed by the bar widget (the facade only gives a
   // start-up snapshot of the bar config), with that snapshot as fallback.
@@ -119,7 +121,7 @@ Item {
     var args = ["start"]
     extra = extra || {}
     if (extra.projectId !== undefined) args.push("--project", extra.projectId === null ? "none" : String(extra.projectId))
-    if (extra.tags) for (var i = 0; i < extra.tags.length; i++) args.push("--tag", String(extra.tags[i]))
+    if (extra.tags) for (var i = 0; i < extra.tags.length; i++) args.push("--tag=" + String(extra.tags[i]))
     if (extra.billable) args.push("--billable")
     if (extra.at) args.push("--at", String(extra.at))
     args.push("--")

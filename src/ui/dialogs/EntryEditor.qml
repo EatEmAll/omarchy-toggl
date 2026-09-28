@@ -90,7 +90,7 @@ Rectangle {
     if (createMode) {
       var args = ["add", "--start", Model.toIso(startMs), "--stop", Model.toIso(stopMs),
                   "--project", projectId === null ? "none" : String(projectId)]
-      for (var i = 0; i < tags.length; i++) args.push("--tag", tags[i])
+      for (var i = 0; i < tags.length; i++) args.push("--tag=" + tags[i])
       if (billable) args.push("--billable")
       args.push("--")
       if (desc.text.trim()) args.push(desc.text.trim())

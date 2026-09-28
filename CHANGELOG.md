@@ -14,6 +14,26 @@
   where a folder should be, aborts the install. Stale files under such paths are
   kept. `uninstall.sh --purge` never deletes inside a symlinked cache or config
   folder. Reported in marketplace review.
+- No-follow file handling everywhere (marketplace review):
+  - the token, `state.json` and `ui.json` are written via a random
+    `O_EXCL|O_NOFOLLOW` 0600 temp file and renamed through an owner-checked
+    `O_NOFOLLOW` folder fd, so symlinks and hard links are never written through;
+  - folders are `fchmod`ed, never `chmod`ed by path;
+  - the lock is taken on the folder itself (no `state.lock`);
+  - reads accept only regular files, so a FIFO can't hang them;
+  - relative `XDG_*` values are ignored;
+  - no `__pycache__` is written into the plugin folder.
+- `install-local.sh`:
+  - validates the source and the plugin ID before writing, and installs only
+    tracked regular files;
+  - journals the marker (old and new hashes, by temp + rename) so an interrupted
+    run can be re-run;
+  - hashes the wrapper only if it's a regular file;
+  - treats shell rescan/enable failures as notes.
+- `uninstall.sh` removes the plugin first and only then the wrapper, token and
+  cache. A declined removal changes nothing.
+- Tags are passed as `--tag=<name>`. The wrapper always runs the installed plugin.
+- New test suites (`tests/test_installer.py`, `tests/test_safety.py`) run in CI.
 - `uninstall.sh --purge` deletes only the files the plugin creates (no `rm -rf`)
   and no longer passes `--yes`, so Omarchy asks before removing the plugin.
 - The cache folder is created 0700 and state files 0600; the token-file folder is 0700.

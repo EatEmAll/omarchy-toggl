@@ -1,7 +1,9 @@
 """The shared state file every writer (panel, keybindings, menu, terminal) updates.
 
 The QML side watches ``state.json`` with a FileView, so writes must be atomic
-(tmp + fsync + rename) and serialised across processes with ``flock``.
+(temp + fsync + rename) and serialised across processes with ``flock``. All
+file access goes through :mod:`safefs`, which never follows symlinks, and the
+lock is taken on the private folder's fd itself (no lock file).
 """
 
 from __future__ import annotations
@@ -9,17 +11,17 @@ from __future__ import annotations
 import contextlib
 import fcntl
 import json
-import os
 from pathlib import Path
 from typing import Any, Iterator
+
+from . import safefs
 
 SCHEMA = 1
 MAX_RANGES = 4
 
 
 def cache_dir() -> Path:
-    base = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache")
-    return Path(base) / "omarchy-toggl"
+    return safefs.xdg_dir("XDG_CACHE_HOME", ".cache") / "omarchy-toggl"
 
 
 def empty_state() -> dict[str, Any]:
@@ -47,61 +49,56 @@ class Store:
         self.dir = Path(directory) if directory else cache_dir()
         self.path = self.dir / "state.json"
         self.ui_path = self.dir / "ui.json"
-        self.lock_path = self.dir / "state.lock"
 
     @contextlib.contextmanager
     def locked(self) -> Iterator[None]:
-        _private_dir(self.dir)
-        with open(self.lock_path, "a+") as handle:
-            fcntl.flock(handle, fcntl.LOCK_EX)
+        with safefs.private_dir(self.dir) as dirfd:
+            fcntl.flock(dirfd, fcntl.LOCK_EX)
             try:
                 yield
             finally:
-                fcntl.flock(handle, fcntl.LOCK_UN)
+                fcntl.flock(dirfd, fcntl.LOCK_UN)
+
+    def _read(self, name: str) -> Any:
+        """Parsed JSON, or None. A planted symlink/FIFO at the file is treated as
+        missing (never followed) and replaced by the next atomic write; an unsafe
+        folder raises."""
+        with safefs.private_dir(self.dir, create=False) as dirfd:
+            if dirfd is None:
+                return None
+            try:
+                found = safefs.read_regular(dirfd, name, str(self.dir / name))
+            except OSError:
+                return None
+        if found is None:
+            return None
+        try:
+            return json.loads(found[0].decode("utf-8"))
+        except ValueError:
+            return None
+
+    def _write(self, name: str, data: Any) -> None:
+        payload = json.dumps(data, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        with safefs.private_dir(self.dir) as dirfd:
+            safefs.write_atomic(dirfd, name, payload)
 
     def load(self) -> dict[str, Any]:
         state = empty_state()
-        try:
-            data = json.loads(self.path.read_text())
-        except (OSError, ValueError):
-            return state
+        data = self._read("state.json")
         if not isinstance(data, dict) or data.get("schema") != SCHEMA:
             return state
         state.update(data)
         return state
 
     def save(self, state: dict[str, Any]) -> None:
-        _atomic_write(self.path, state)
+        self._write("state.json", state)
 
     def load_ui(self) -> dict[str, Any]:
-        try:
-            data = json.loads(self.ui_path.read_text())
-            return data if isinstance(data, dict) else {}
-        except (OSError, ValueError):
-            return {}
+        data = self._read("ui.json")
+        return data if isinstance(data, dict) else {}
 
     def save_ui(self, data: dict[str, Any]) -> None:
-        _atomic_write(self.ui_path, data)
-
-
-def _private_dir(path: Path) -> None:
-    """Create the cache folder readable only by the user (it holds time entries)."""
-    path.mkdir(mode=0o700, parents=True, exist_ok=True)
-    try:
-        os.chmod(path, 0o700)
-    except OSError:
-        pass
-
-
-def _atomic_write(path: Path, data: Any) -> None:
-    _private_dir(path.parent)
-    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as handle:
-        json.dump(data, handle, separators=(",", ":"), ensure_ascii=False)
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.replace(tmp, path)
+        self._write("ui.json", data)
 
 
 def remember_range(state: dict[str, Any], key: str, value: dict[str, Any]) -> None:

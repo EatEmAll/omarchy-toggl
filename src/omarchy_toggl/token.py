@@ -12,6 +12,8 @@ import stat
 import subprocess
 from pathlib import Path
 
+from . import safefs
+
 SERVICE_ATTRS = ["service", "omarchy-toggl", "account", "api-token"]
 LABEL = "Toggl Track API token"
 
@@ -21,8 +23,7 @@ class TokenError(Exception):
 
 
 def token_file() -> Path:
-    base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
-    return Path(base) / "omarchy-toggl" / "token"
+    return safefs.xdg_dir("XDG_CONFIG_HOME", ".config") / "omarchy-toggl" / "token"
 
 
 def _secret_tool() -> str | None:
@@ -64,23 +65,39 @@ def _keyring_clear() -> None:
 
 def _file_lookup() -> str | None:
     path = token_file()
-    if not path.exists():
+    try:
+        with safefs.private_dir(path.parent, create=False) as dirfd:
+            if dirfd is None:
+                return None
+            found = safefs.read_regular(dirfd, path.name, str(path), max_bytes=4096)
+    except safefs.UnsafePath as exc:
+        raise TokenError(f"{exc}; remove it and sign in again") from None
+    if found is None:
         return None
-    mode = stat.S_IMODE(path.stat().st_mode)
+    data, st = found
+    if st.st_uid != os.getuid():
+        raise TokenError(f"token file {path} is owned by another user")
+    mode = stat.S_IMODE(st.st_mode)
     if mode & 0o077:
         raise TokenError(f"insecure token file {path} (mode {oct(mode)}); run: chmod 600 {path}")
-    value = path.read_text().strip()
+    value = data.decode("utf-8", errors="replace").strip()
     return value or None
 
 
 def _file_store(token: str) -> None:
     path = token_file()
-    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    os.chmod(path.parent, 0o700)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as handle:
-        handle.write(token + "\n")
-    os.chmod(path, 0o600)
+    with safefs.private_dir(path.parent) as dirfd:
+        safefs.write_atomic(dirfd, path.name, (token + "\n").encode("utf-8"))
+
+
+def _file_remove() -> None:
+    path = token_file()
+    try:
+        with safefs.private_dir(path.parent, create=False) as dirfd:
+            if dirfd is not None:
+                safefs.unlink(dirfd, path.name)
+    except safefs.UnsafePath as exc:
+        raise TokenError(str(exc)) from None
 
 
 def get_token() -> tuple[str, str]:
@@ -102,9 +119,7 @@ def set_token(token: str) -> str:
     if not token or any(ch.isspace() for ch in token):
         raise TokenError("token looks invalid")
     if _keyring_store(token) and _keyring_lookup() == token:
-        path = token_file()
-        if path.exists():
-            path.unlink()
+        _file_remove()
         return "keyring"
     _file_store(token)
     return "file"
@@ -112,6 +127,4 @@ def set_token(token: str) -> str:
 
 def clear_token() -> None:
     _keyring_clear()
-    path = token_file()
-    if path.exists():
-        path.unlink()
+    _file_remove()

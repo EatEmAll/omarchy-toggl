@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 # Terminal / keybinding / menu entry point for the omarchy-toggl plugin backend.
-exec python3 "${OMARCHY_TOGGL_DIR:-$HOME/.config/omarchy/plugins/io.github.eatemall.toggl}/src/toggl.py" "$@"
+exec python3 "$HOME/.config/omarchy/plugins/io.github.eatemall.toggl/src/toggl.py" "$@"

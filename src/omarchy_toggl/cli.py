@@ -163,6 +163,8 @@ def main(argv: list[str] | None = None, engine: Engine | None = None) -> int:
         return _fail(exc.kind, str(exc), as_text, **extra)
     except ValueError as exc:
         return _fail("usage", str(exc), as_text)
+    except OSError as exc:
+        return _fail("io", str(exc), as_text)
 
 
 def _ok(out: dict[str, Any], as_text: bool, text: str | None = None) -> int:
