@@ -87,19 +87,39 @@ while IFS= read -r path; do [[ -n "$path" ]] && shipping["$path"]=1; done <<< "$
 
 # Preflight, before anything is written. An existing file may be replaced
 # only if it is exactly what this installer last wrote, or already identical
-# to the new version. Anything else (edited by the user, created by the user,
-# a symlink) is a conflict and nothing is changed.
-conflicts=()
+# to the new version, and only if no folder above it is a symlink. Anything
+# else (edited or created by the user, a symlinked file or folder) is a
+# conflict and nothing is changed.
+# First existing parent folder of a path that is a symlink or not a folder
+# (writing below it would replace or follow it), or nothing.
+bad_parent() {
+  local dir
+  dir=$(dirname -- "$1")
+  local parts=()
+  while [[ "$dir" != "." ]]; do parts=("$dir" "${parts[@]}"); dir=$(dirname -- "$dir"); done
+  for dir in "${parts[@]}"; do
+    if [[ -L "$target/$dir" ]]; then echo "$dir (symlinked folder)"; return 0; fi
+    if [[ -e "$target/$dir" && ! -d "$target/$dir" ]]; then echo "$dir (not a folder)"; return 0; fi
+    [[ -e "$target/$dir" ]] || return 0
+  done
+  return 0
+}
+
+declare -A conflict_set=()
 for path in "${!shipping[@]}"; do
   dest="$target/$path"
-  if [[ -L "$dest" ]]; then conflicts+=("$path (symlink)"); continue; fi
+  parent=$(bad_parent "$path")
+  if [[ -n "$parent" ]]; then conflict_set["$parent"]=1; continue; fi
+  if [[ -L "$dest" ]]; then conflict_set["$path (symlink)"]=1; continue; fi
   [[ -e "$dest" ]] || continue
+  if [[ ! -f "$dest" ]]; then conflict_set["$path (not a regular file)"]=1; continue; fi
   current=$(sha "$dest")
   [[ "$current" == "$(sha "$root/$path")" ]] && continue
   [[ -n "${installed[$path]:-}" && "$current" == "${installed[$path]}" ]] && continue
   [[ "$marker_version" == 1 && -n "${installed[$path]+set}" ]] && shipped_before "$path" "$current" && continue
-  conflicts+=("$path")
+  conflict_set["$path"]=1
 done
+conflicts=("${!conflict_set[@]}")
 if (( ${#conflicts[@]} )); then
   echo "Not updating $target: these files were changed or added outside this installer:" >&2
   printf '  %s\n' "${conflicts[@]}" | sort >&2
@@ -115,7 +135,12 @@ for path in "${!installed[@]}"; do
   [[ -n "${shipping[$path]:-}" || "$path" == "@wrapper" ]] && continue
   [[ -z "$path" || "$path" == /* || "$path" == *..* ]] && continue
   dest="$target/$path"
+  if [[ -n "$(bad_parent "$path")" ]]; then
+    [[ -e "$dest" || -L "$dest" ]] && stale_kept+=("$path")
+    continue
+  fi
   [[ -e "$dest" || -L "$dest" ]] || continue
+  if [[ ! -f "$dest" ]]; then stale_kept+=("$path"); continue; fi
   if [[ ! -L "$dest" && -n "${installed[$path]}" && "$(sha "$dest")" == "${installed[$path]}" ]]; then
     stale_delete+=("$path")
   elif [[ ! -L "$dest" && "$marker_version" == 1 ]] && shipped_before "$path" "$(sha "$dest")"; then

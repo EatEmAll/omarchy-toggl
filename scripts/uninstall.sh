@@ -45,10 +45,20 @@ if (( purge )); then
   # Remove only the files this plugin creates, then the folders if now empty.
   cache="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy-toggl"
   config="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy-toggl"
-  rm -f -- "$cache/state.json" "$cache/ui.json" "$cache/state.lock" "$config/token"
-  find "$cache" -maxdepth 1 -name '.state.json.*.tmp' -type f -delete 2>/dev/null || true
-  find "$cache" -maxdepth 1 -name '.ui.json.*.tmp' -type f -delete 2>/dev/null || true
-  rmdir -- "$cache" "$config" 2>/dev/null || true
+  # Never follow a symlinked folder: only delete inside real directories.
+  if [[ -d "$cache" && ! -L "$cache" ]]; then
+    rm -f -- "$cache/state.json" "$cache/ui.json" "$cache/state.lock"
+    find "$cache" -maxdepth 1 \( -name '.state.json.*.tmp' -o -name '.ui.json.*.tmp' \) -type f -delete 2>/dev/null || true
+    rmdir -- "$cache" 2>/dev/null || true
+  elif [[ -L "$cache" ]]; then
+    echo "note: $cache is a symlink; left it alone"
+  fi
+  if [[ -d "$config" && ! -L "$config" ]]; then
+    rm -f -- "$config/token"
+    rmdir -- "$config" 2>/dev/null || true
+  elif [[ -L "$config" ]]; then
+    echo "note: $config is a symlink; left it alone"
+  fi
 fi
 
 echo "Removed $id."

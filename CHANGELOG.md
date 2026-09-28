@@ -10,6 +10,10 @@
   changes nothing, if a plugin file was edited or added since. Stale files are
   deleted only if unchanged. Symlinks are never written through. The CLI
   wrapper is replaced or removed only if unchanged. Reported in marketplace review.
+- The preflight also checks every parent folder. A symlinked folder, or a file
+  where a folder should be, aborts the install. Stale files under such paths are
+  kept. `uninstall.sh --purge` never deletes inside a symlinked cache or config
+  folder. Reported in marketplace review.
 - `uninstall.sh --purge` deletes only the files the plugin creates (no `rm -rf`)
   and no longer passes `--yes`, so Omarchy asks before removing the plugin.
 - The cache folder is created 0700 and state files 0600; the token-file folder is 0700.
