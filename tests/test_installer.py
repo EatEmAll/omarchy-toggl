@@ -20,6 +20,7 @@ echo "omarchy $*" >> "$STUB_LOG"
 plugins="$HOME/.config/omarchy/plugins"
 case "$1 $2" in
   "plugin list")
+    [ -n "${STUB_LIST_FAIL:-}" ] && exit 1
     if [ -d "$plugins/$PLUGIN_ID" ]; then echo '[{"id":"'"$PLUGIN_ID"'","enabled":true}]'; else echo '[]'; fi ;;
   "plugin remove")
     [ -n "${STUB_REMOVE_DECLINE:-}" ] && exit 1
@@ -275,6 +276,15 @@ class InstallerTests(unittest.TestCase):
         self.assertTrue((cache / "state.json").exists())
         self.assertTrue((config / "token").exists())
         self.assertNotIn("secret-tool", self.log.read_text())
+
+    def test_uninstall_when_plugin_list_fails_still_requires_removal(self):
+        self.install()
+        cache, _ = self.make_user_data()
+        result = self.run_script("uninstall.sh", "--purge", STUB_LIST_FAIL="1", STUB_REMOVE_DECLINE="1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue(self.target.is_dir())
+        self.assertTrue((cache / "state.json").exists())
+        self.assertNotIn("Removed", result.stdout)
 
     def test_uninstall_purge_removes_only_ours(self):
         self.install()

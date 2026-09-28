@@ -32,9 +32,14 @@ if [[ -f "$marker" && ! -L "$marker" && ! -e "$plugin/.git" && ! -L "$plugin" ]]
   wrapper_hash=$(grep -m1 -E '^[0-9a-f]{64}  @wrapper$' -- "$marker" | cut -c1-64 || true)
 fi
 
-if omarchy plugin list --json 2>/dev/null | jq -e --arg id "$id" '.[] | select(.id == $id)' >/dev/null; then
+# The plugin counts as installed if its folder exists or Omarchy lists it (a
+# failing `plugin list` must not be mistaken for "not installed"). Removal
+# counts as done only when the folder is really gone.
+listed=0
+omarchy plugin list --json 2>/dev/null | jq -e --arg id "$id" '.[] | select(.id == $id)' >/dev/null && listed=1
+if (( listed )) || [[ -e "$plugin" || -L "$plugin" ]]; then
   # Omarchy shows its own confirmation; if it is declined or fails, stop here.
-  if ! omarchy plugin remove "$id"; then
+  if ! omarchy plugin remove "$id" || [[ -e "$plugin" || -L "$plugin" ]]; then
     echo "The plugin was not removed; nothing else was changed." >&2
     exit 1
   fi
