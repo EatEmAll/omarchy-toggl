@@ -46,7 +46,11 @@
     whole process group is killed on timeout;
   - descriptions (3,000 characters), tags (50 × 128) and the offline queue
     (500 changes) are bounded;
-  - covered by `tests/test_limits.py`.
+  - the 30 s request deadline is enforced at the blocking system call by a
+    real-time interval timer covering connect, TLS, headers, body and error
+    body, so a slow-drip server can't keep a `recv` alive past it. Each chunk
+    is a single `read1`, and the state-lock wait is bounded (60 s);
+  - covered by `tests/test_limits.py`, including real slow-drip servers.
 - `uninstall.sh --purge` deletes only the files the plugin creates (no `rm -rf`)
   and no longer passes `--yes`, so Omarchy asks before removing the plugin.
 - The cache folder is created 0700 and state files 0600; the token-file folder is 0700.

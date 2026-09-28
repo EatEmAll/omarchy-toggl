@@ -11,6 +11,7 @@ from __future__ import annotations
 import contextlib
 import fcntl
 import json
+import time
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -18,6 +19,7 @@ from . import safefs
 
 SCHEMA = 1
 MAX_RANGES = 4
+LOCK_WAIT = 60      # seconds to wait for another process holding the state lock
 
 
 def cache_dir() -> Path:
@@ -53,7 +55,15 @@ class Store:
     @contextlib.contextmanager
     def locked(self) -> Iterator[None]:
         with safefs.private_dir(self.dir) as dirfd:
-            fcntl.flock(dirfd, fcntl.LOCK_EX)
+            waited_until = time.monotonic() + LOCK_WAIT
+            while True:
+                try:
+                    fcntl.flock(dirfd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() > waited_until:
+                        raise TimeoutError("another omarchy-toggl process is still busy; try again") from None
+                    time.sleep(0.05)
             try:
                 yield
             finally:

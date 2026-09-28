@@ -9,8 +9,14 @@ Untrusted-input rules (all in :meth:`Api.request`):
   sent to ``https://api.track.toggl.com`` (urllib would otherwise forward it
   to any redirect target, including another host or plain http);
 * bodies are read in chunks with hard byte limits enforced during the read
-  (``MAX_BODY`` for responses, ``MAX_ERROR_BODY`` for error bodies) and an
-  overall per-request deadline on top of the socket timeout;
+  (``MAX_BODY`` for responses, ``MAX_ERROR_BODY`` for error bodies);
+* one overall deadline covers the whole request (connect, TLS, headers, body
+  and error body). It is enforced at the blocking system call by a real-time
+  ``SIGALRM`` interval timer, which interrupts even a ``recv`` that a
+  slow-drip server keeps alive under the socket timeout. The backend always
+  runs as its own CLI process on the main thread, so the alarm always applies;
+  as a second layer each chunk is a single ``read1`` (one ``recv``), so without
+  the alarm a read can overrun by at most one socket timeout;
 * ``Accept-Encoding: identity`` (no decompression);
 * responses must be JSON of the type each endpoint expects, otherwise
   :class:`ApiError`; pagination stops after ``MAX_PAGES``.
@@ -19,7 +25,11 @@ Untrusted-input rules (all in :meth:`Api.request`):
 from __future__ import annotations
 
 import base64
+import http.client
+import contextlib
 import json
+import signal
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -78,6 +88,36 @@ class Conflict(ApiError):
     kind = "conflict"
 
 
+class _DeadlineExceeded(NetError):
+    """Raised from the SIGALRM handler; not an OSError, so urllib won't wrap it."""
+
+
+@contextlib.contextmanager
+def _deadline(seconds: float) -> Any:
+    """Interrupt whatever blocks (connect, recv, ...) once ``seconds`` have passed."""
+    usable = hasattr(signal, "setitimer") and threading.current_thread() is threading.main_thread()
+    if not usable:
+        yield
+        return
+
+    def fire(signum: int, frame: Any) -> None:
+        raise _DeadlineExceeded("Toggl request took too long")
+
+    previous = signal.signal(signal.SIGALRM, fire)
+    signal.setitimer(signal.ITIMER_REAL, max(seconds, 0.001))
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+
+
+def _read_chunk(stream: Any, size: int) -> bytes:
+    """One chunk with at most one underlying recv when the stream supports it."""
+    read1 = getattr(stream, "read1", None)
+    return read1(size) if callable(read1) else stream.read(size)
+
+
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     """Refuse every redirect: urllib would re-send Authorization to the new URL."""
 
@@ -98,7 +138,7 @@ def _read_capped(stream: Any, limit: int, deadline: float, monotonic: Callable[[
     while True:
         if monotonic() > deadline:
             raise NetError("Toggl response took too long")
-        chunk = stream.read(min(CHUNK, limit + 1 - total))
+        chunk = _read_chunk(stream, min(CHUNK, limit + 1 - total))
         if not chunk:
             return b"".join(chunks)
         chunks.append(chunk)
@@ -147,7 +187,7 @@ class Api:
         self.calls.append(f"{method} {path}")
         deadline = self._monotonic() + DEADLINE
         try:
-            with self._open(req, timeout=SOCKET_TIMEOUT) as resp:
+            with _deadline(DEADLINE), self._open(req, timeout=SOCKET_TIMEOUT) as resp:
                 final = urllib.parse.urlsplit(resp.geturl()) if hasattr(resp, "geturl") else parts
                 if (final.scheme, final.hostname) != ALLOWED_ORIGIN:
                     raise ApiError("Toggl API response came from an unexpected location")
@@ -155,7 +195,8 @@ class Api:
                 raw = _read_capped(resp, MAX_BODY, deadline, self._monotonic)
         except urllib.error.HTTPError as err:
             self._record(bucket, err.headers)
-            detail = _error_text(err, deadline, self._monotonic)
+            with _deadline(max(deadline - self._monotonic(), 0)):
+                detail = _error_text(err, deadline, self._monotonic)
             status = err.code
             if 300 <= status < 400:
                 raise ApiError(f"Toggl API answered with a redirect ({status}); not following it", status) from None
@@ -267,12 +308,12 @@ def _error_text(err: urllib.error.HTTPError, deadline: float, monotonic: Callabl
     total = 0
     try:
         while total < MAX_ERROR_BODY and monotonic() <= deadline:
-            chunk = err.read(min(CHUNK, MAX_ERROR_BODY - total))
+            chunk = _read_chunk(err, min(CHUNK, MAX_ERROR_BODY - total))
             if not chunk:
                 break
             chunks.append(chunk)
             total += len(chunk)
-    except Exception:  # noqa: BLE001 - best effort diagnostics only
+    except (OSError, ValueError, http.client.HTTPException):  # best effort; the deadline still propagates
         pass
     text = b"".join(chunks).decode(errors="replace").strip()
     if text.startswith('"') and text.endswith('"'):

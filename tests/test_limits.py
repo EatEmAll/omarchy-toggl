@@ -41,6 +41,9 @@ class Endless:
     def geturl(self):
         return self._url
 
+    def close(self):
+        pass
+
     def __enter__(self):
         return self
 
@@ -224,3 +227,86 @@ class LocalInputLimits(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SlowDrip(unittest.TestCase):
+    """A server that keeps each recv alive under the socket timeout must still
+    hit the overall deadline (checked at the syscall, not between chunks)."""
+
+    CLIENT = r'''
+import sys, time
+sys.path.insert(0, %(root)r)
+from src.omarchy_toggl import api as api_mod
+api_mod.ALLOWED_ORIGIN = ("http", "127.0.0.1")
+api_mod.DEADLINE = 1.5
+api_mod.SOCKET_TIMEOUT = 1.0
+t = time.monotonic()
+try:
+    api_mod.Api("tok").request("GET", "/x", base="http://127.0.0.1:%(port)d")
+    print("NO-ERROR")
+except api_mod.NetError as exc:
+    print("NetError %%.1f" %% (time.monotonic() - t))
+'''
+
+    def serve(self, mode):
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                try:
+                    if mode == "headers":
+                        for ch in b"HTTP/1.1 200 OK\r\nX-Slow: " + b"a" * 1000:
+                            self.wfile.write(bytes([ch])); self.wfile.flush(); time.sleep(0.3)
+                        return
+                    self.send_response(500 if mode == "error" else 200)
+                    self.send_header("Content-Length", "100000")
+                    self.end_headers()
+                    for _ in range(1000):
+                        self.wfile.write(b"x"); self.wfile.flush(); time.sleep(0.3)
+                except OSError:
+                    pass
+
+            def log_message(self, *args):
+                pass
+
+        import time
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        server.daemon_threads = True
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.shutdown)
+        return server.server_port
+
+    def run_client(self, mode):
+        port = self.serve(mode)
+        code = self.CLIENT % {"root": str(ROOT), "port": port}
+        out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=15)
+        return out.stdout.strip() + out.stderr.strip()[-300:]
+
+    def assertDeadline(self, result):
+        self.assertTrue(result.startswith("NetError"), result)
+        self.assertLess(float(result.split()[1]), 3.0, result)
+
+    def test_slow_drip_body(self):
+        self.assertDeadline(self.run_client("body"))
+
+    def test_slow_drip_headers(self):
+        self.assertDeadline(self.run_client("headers"))
+
+    def test_slow_drip_error_body(self):
+        self.assertDeadline(self.run_client("error"))
+
+
+class LockWait(unittest.TestCase):
+    def test_lock_wait_is_bounded(self):
+        import fcntl
+        from src.omarchy_toggl import store as store_mod
+        d = Path(tempfile.mkdtemp()) / "c"
+        holder = store_mod.Store(d)
+        with holder.locked():
+            other = store_mod.Store(d)
+            with mock.patch.object(store_mod, "LOCK_WAIT", 0.3), self.assertRaises(TimeoutError):
+                # a second open file description contends for the same flock
+                fd = os.open(d, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    with other.locked():
+                        pass
+                finally:
+                    os.close(fd)
