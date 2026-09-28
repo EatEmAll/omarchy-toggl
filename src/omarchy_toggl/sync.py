@@ -673,9 +673,17 @@ class Engine:
             return
         mapping: dict[int, int] = {}
         remaining: list[dict[str, Any]] = []
+
+        def carry(rest: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            # Leftover ops may refer to entries created earlier in this run by
+            # their temporary id; rewrite those to the real id so a later run
+            # still applies them instead of skipping them.
+            return [{**op, "id": mapping[op["id"]]} if isinstance(op.get("id"), int) and op["id"] in mapping
+                    else op for op in rest]
+
         for index, op in enumerate(pending):
             if index >= MAX_REPLAY:
-                state["pending"] = pending[index:]      # the rest drains on the next syncs
+                state["pending"] = carry(pending[index:])   # the rest drains on the next syncs
                 return
             eid = op.get("id")
             if isinstance(eid, int) and eid in mapping:
@@ -696,7 +704,7 @@ class Engine:
             except (NotFound, Conflict):
                 continue
             except NetError:
-                remaining = pending[index:]
+                remaining = carry(pending[index:])
                 break
         state["pending"] = remaining
         if remaining:

@@ -66,6 +66,10 @@
   - an oversized state file is reported and never overwritten, and file reads
     are bounded even if the file grows.
 - Out-of-range times (e.g. `+99999999999999h`) are a usage error in both parsers.
+- Offline replay that stops early (per-sync cap or a dropped connection)
+  rewrites temporary IDs in the leftover queue to the real IDs, so a queued edit
+  to an entry created offline is never silently skipped. Reported in marketplace
+  review.
 - `uninstall.sh --purge` deletes only the files the plugin creates (no `rm -rf`)
   and no longer passes `--yes`, so Omarchy asks before removing the plugin.
 - The cache folder is created 0700 and state files 0600; the token-file folder is 0700.

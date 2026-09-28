@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 import urllib.error
 from email.message import Message
@@ -418,3 +419,65 @@ class TimeParsing(unittest.TestCase):
         for text in ("-99999999999999m", "+99999999999999h"):
             with self.subTest(text=text), self.assertRaises(ValueError):
                 parse_when(text)
+
+
+class ReplayContinuity(unittest.TestCase):
+    """An update queued for an entry created offline must survive a replay that
+    stops early (per-sync cap or a dropped connection)."""
+
+    def setUp(self):
+        from tests.fakes import entry
+        self.entry = entry
+        self.opener = FakeOpener().on("GET", "/me", lambda p, b: ME).on("GET", "/me/time_entries", lambda p, b: [])
+        self.opener.on("POST", "/workspaces/7/time_entries",
+                       lambda p, b: entry(900, b["start"], None, desc=b["description"], pid=None))
+        self.updates = []
+
+        def update(p, b):
+            self.updates.append(p)
+            return entry(900, "2026-09-26T10:00:00Z", b.get("stop"), desc="Offline", pid=None)
+        self.opener.on("PUT", "/workspaces/7/time_entries/", update)
+        self.engine, self.store = make_engine(self.opener)
+        self.engine.sync(force=True)
+
+    def queue(self, filler):
+        with self.store.locked():
+            state = self.store.load()
+            state["pending"] = (
+                [{"op": "create", "wid": 7, "tempId": -5,
+                  "body": {"description": "Offline", "start": "2026-09-26T10:00:00Z", "duration": -1}}]
+                + [{"op": "delete", "wid": 7, "id": 1000 + i} for i in range(filler)]
+                + [{"op": "update", "wid": 7, "id": -5,
+                    "body": {"stop": "2026-09-26T11:00:00Z", "duration": 3600}}])
+            self.store.save(state)
+
+    def test_update_survives_the_per_sync_cap(self):
+        from src.omarchy_toggl.sync import MAX_REPLAY
+        self.opener.on("DELETE", "/workspaces/7/time_entries/", lambda p, b: None)
+        self.queue(MAX_REPLAY)                 # the update lands beyond the first batch
+        self.engine.sync(force=True)
+        with self.store.locked():
+            leftover = self.store.load()["pending"]
+        self.assertEqual(leftover[-1]["id"], 900)            # rewritten to the real id
+        self.engine._api = None
+        with mock.patch("time.time", return_value=time.time() + 3600):
+            self.engine.sync(force=True)
+        self.assertIn("/workspaces/7/time_entries/900", self.updates)
+
+    def test_update_survives_a_dropped_connection(self):
+        calls = {"n": 0}
+        self.queue(1)
+        real = self.opener.__call__
+
+        def opener(req, timeout=None):
+            if req.get_method() == "DELETE" and calls["n"] == 0:
+                calls["n"] += 1
+                raise urllib.error.URLError("offline")
+            return real(req, timeout)
+        self.engine._api = Api("tok", opener=opener, sleep=lambda s: None)
+        self.opener.on("DELETE", "/workspaces/7/time_entries/", lambda p, b: None)
+        with self.assertRaises(NetError):
+            self.engine.sync(force=True)
+        with self.store.locked():
+            leftover = self.store.load()["pending"]
+        self.assertEqual([op.get("id") for op in leftover if op["op"] == "update"], [900])
