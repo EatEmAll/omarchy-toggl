@@ -12,6 +12,10 @@ set -euo pipefail
 id="io.github.eatemall.toggl"
 wrapper="$HOME/.local/bin/omarchy-toggl"
 cli="$HOME/.config/omarchy/plugins/$id/src/toggl.py"
+marker="$HOME/.config/omarchy/plugins/$id/.omarchy-toggl-install"
+# The wrapper is removed only if it is byte-for-byte what install-local.sh
+# recorded; read that before the plugin folder (and its marker) goes away.
+wrapper_hash=$(grep -m1 '  @wrapper$' "$marker" 2>/dev/null | cut -c1-64 || true)
 purge=0
 [[ "${1:-}" == "--purge" ]] && purge=1
 
@@ -29,8 +33,12 @@ if omarchy plugin list --json 2>/dev/null | jq -e --arg id "$id" '.[] | select(.
   omarchy plugin remove "$id"
 fi
 
-if [[ -f "$wrapper" ]] && grep -q "omarchy-toggl plugin backend" "$wrapper"; then
-  rm -f "$wrapper"
+if [[ -f "$wrapper" && ! -L "$wrapper" ]]; then
+  if [[ -n "$wrapper_hash" && "$(sha256sum -- "$wrapper" | cut -c1-64)" == "$wrapper_hash" ]]; then
+    rm -f -- "$wrapper"
+  else
+    echo "note: left $wrapper in place (not installed by install-local.sh, or edited since)"
+  fi
 fi
 
 if (( purge )); then
