@@ -32,6 +32,7 @@ Rectangle {
       visible: !root.placeholder
     }
     Text {
+      textFormat: Text.PlainText
       anchors.verticalCenter: parent.verticalCenter
       text: root.placeholder ? "󰉋" : Model.elide(root.name, root.maxChars)
       color: root.placeholder ? Color.muted : Qt.lighter(root.tone, 1.25)

@@ -242,6 +242,7 @@ Item {
     }
 
     Text {
+      textFormat: Text.PlainText
       id: elapsed
       anchors.verticalCenter: parent.verticalCenter
       width: Math.max(implicitWidth, Style.space(64))
@@ -285,6 +286,7 @@ Item {
         contentItem: Column {
           spacing: Style.spacing.md
           Text {
+            textFormat: Text.PlainText
             text: "START TIME"
             color: Color.muted
             font.family: ctx.fontFamily
@@ -306,6 +308,7 @@ Item {
             Keys.onReturnPressed: function(event) { focus = false; event.accepted = true }
           }
           Text {
+            textFormat: Text.PlainText
             width: parent.width
             text: "14:02 · 2:02pm · -15m · yesterday 17:30"
             color: Color.muted
@@ -369,6 +372,7 @@ Item {
               dotColor: modelData.color ? modelData.color : Color.muted
             }
             Text {
+              textFormat: Text.PlainText
               anchors.verticalCenter: parent.verticalCenter
               width: parent.width - Style.space(120)
               text: modelData.label
@@ -378,6 +382,7 @@ Item {
               elide: Text.ElideRight
             }
             Text {
+              textFormat: Text.PlainText
               anchors.verticalCenter: parent.verticalCenter
               width: Style.space(90)
               text: modelData.kind === "entry" ? (modelData.projectName || "") : (modelData.kind === "project" ? "project" : "tag")

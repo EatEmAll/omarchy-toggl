@@ -42,6 +42,7 @@ Flickable {
   }
 
   component SectionTitle: Text {
+    textFormat: Text.PlainText
     color: Color.muted
     font.family: ctx.fontFamily
     font.pixelSize: Style.font.caption
@@ -63,6 +64,7 @@ Flickable {
       anchors.rightMargin: Style.spacing.lg
       anchors.verticalCenter: parent.verticalCenter
       Text {
+        textFormat: Text.PlainText
         width: parent.width
         text: settingRow.label
         color: ctx.foreground
@@ -71,6 +73,7 @@ Flickable {
         elide: Text.ElideRight
       }
       Text {
+        textFormat: Text.PlainText
         width: parent.width
         visible: settingRow.hint !== ""
         text: settingRow.hint
@@ -108,6 +111,7 @@ Flickable {
         width: parent.width
         spacing: Style.spacing.lg
         Text {
+          textFormat: Text.PlainText
           anchors.verticalCenter: parent.verticalCenter
           text: "●"
           color: ctx.accent
@@ -117,6 +121,7 @@ Flickable {
           width: parent.width - signOut.width - Style.space(30)
           anchors.verticalCenter: parent.verticalCenter
           Text {
+            textFormat: Text.PlainText
             width: parent.width
             text: "Connected as " + (root.auth.user ? (root.auth.user.fullname || root.auth.user.email || "") : "")
             color: ctx.foreground
@@ -126,6 +131,7 @@ Flickable {
             elide: Text.ElideRight
           }
           Text {
+            textFormat: Text.PlainText
             width: parent.width
             text: (root.auth.user && root.auth.user.email ? root.auth.user.email + " · " : "")
               + "token in " + (root.auth.source === "keyring" ? "keyring" : root.auth.source === "file" ? "0600 file" : String(root.auth.source || "?"))
@@ -152,6 +158,7 @@ Flickable {
         width: parent.width
         spacing: Style.spacing.md
         Text {
+          textFormat: Text.PlainText
           width: parent.width
           text: "Paste your Toggl Track API token. It is stored in the system keyring (or a 0600 file) and never written to shell.json."
           color: ctx.foreground
@@ -185,6 +192,7 @@ Flickable {
           }
         }
         Text {
+          textFormat: Text.PlainText
           visible: root.loginError !== ""
           width: parent.width
           text: root.loginError
@@ -194,6 +202,7 @@ Flickable {
           wrapMode: Text.WordWrap
         }
         Text {
+          textFormat: Text.PlainText
           text: "Find it at track.toggl.com/profile ↗"
           color: ctx.accent
           font.family: ctx.fontFamily
@@ -443,6 +452,7 @@ Flickable {
         radius: Math.max(Style.cornerRadius, Style.space(6))
         color: Qt.rgba(ctx.foreground.r, ctx.foreground.g, ctx.foreground.b, 0.04)
         Text {
+          textFormat: Text.PlainText
           id: doctorLabel
           anchors.fill: parent
           anchors.margins: Style.spacing.lg
@@ -456,6 +466,7 @@ Flickable {
     }
 
     Text {
+      textFormat: Text.PlainText
       width: parent.width
       text: "Keys: n or / new entry · s stop · space stop/continue · 1-3 views · , settings · [ ] range · t today · f search · j/k move · h/l fold · ↵ continue · e edit · x delete · m menu · v select · r sync · c compact"
       color: Color.muted

@@ -290,6 +290,7 @@ Panel {
             spacing: Style.spacing.md
             width: parent.width - headerActions.width - Style.spacing.md
             Text {
+              textFormat: Text.PlainText
               anchors.verticalCenter: parent.verticalCenter
               text: "󱎫"
               color: root.svc && root.svc.running ? Model.projectColor(root.svc.running, root.accent) : root.accent
@@ -297,6 +298,7 @@ Panel {
               font.pixelSize: Style.font.heading
             }
             Text {
+              textFormat: Text.PlainText
               anchors.verticalCenter: parent.verticalCenter
               text: "Toggl Track"
               color: root.foreground
@@ -305,6 +307,7 @@ Panel {
               font.bold: true
             }
             Text {
+              textFormat: Text.PlainText
               anchors.verticalCenter: parent.verticalCenter
               width: parent.width - Style.space(130)
               text: root.subtitle()
@@ -545,6 +548,7 @@ Panel {
               border.width: Style.spacing.hairline
               border.color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.28)
               Text {
+                textFormat: Text.PlainText
                 anchors.left: parent.left
                 anchors.leftMargin: Style.spacing.xl
                 anchors.verticalCenter: parent.verticalCenter

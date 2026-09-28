@@ -14,6 +14,7 @@ Column {
   spacing: Style.spacing.lg
 
   Text {
+    textFormat: Text.PlainText
     width: parent.width
     topPadding: root.iconTopPadding
     text: root.icon
@@ -23,6 +24,7 @@ Column {
     horizontalAlignment: Text.AlignHCenter
   }
   Text {
+    textFormat: Text.PlainText
     width: parent.width
     text: root.title
     color: root.foreground
@@ -32,6 +34,7 @@ Column {
     horizontalAlignment: Text.AlignHCenter
   }
   Text {
+    textFormat: Text.PlainText
     width: parent.width
     text: root.detail
     color: Color.muted

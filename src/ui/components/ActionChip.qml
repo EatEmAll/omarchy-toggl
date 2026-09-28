@@ -34,6 +34,7 @@ Rectangle {
     spacing: Style.spacing.sm
 
     Text {
+      textFormat: Text.PlainText
       visible: root.icon !== ""
       text: root.icon
       color: root.destructive ? Color.urgent : (root.selected ? root.accent : root.foreground)
@@ -43,6 +44,7 @@ Rectangle {
     }
 
     Text {
+      textFormat: Text.PlainText
       text: root.text
       color: root.destructive ? Color.urgent : root.foreground
       font.family: root.fontFamily

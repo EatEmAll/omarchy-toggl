@@ -63,6 +63,7 @@ Popup {
             anchors.rightMargin: Style.spacing.lg
             spacing: Style.spacing.lg
             Text {
+              textFormat: Text.PlainText
               anchors.verticalCenter: parent.verticalCenter
               width: Style.space(14)
               text: modelData.icon || ""
@@ -71,6 +72,7 @@ Popup {
               font.pixelSize: Style.font.bodySmall
             }
             Text {
+              textFormat: Text.PlainText
               anchors.verticalCenter: parent.verticalCenter
               width: parent.width - Style.space(14) - hint.width - parent.spacing * 2
               text: modelData.label
@@ -80,6 +82,7 @@ Popup {
               elide: Text.ElideRight
             }
             Text {
+              textFormat: Text.PlainText
               id: hint
               anchors.verticalCenter: parent.verticalCenter
               text: modelData.hint || ""

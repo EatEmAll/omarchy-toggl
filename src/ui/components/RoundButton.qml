@@ -60,6 +60,7 @@ Rectangle {
   }
 
   Text {
+    textFormat: Text.PlainText
     visible: root.busy
     anchors.centerIn: parent
     text: "󰑓"

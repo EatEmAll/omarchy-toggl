@@ -20,6 +20,7 @@ Rectangle {
   border.color: expanded ? Qt.rgba(accent.r, accent.g, accent.b, 0.4) : Qt.rgba(foreground.r, foreground.g, foreground.b, 0.28)
 
   Text {
+    textFormat: Text.PlainText
     anchors.centerIn: parent
     text: String(root.count)
     color: root.expanded ? root.accent : root.foreground

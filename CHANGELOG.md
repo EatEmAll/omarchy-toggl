@@ -51,6 +51,21 @@
     body, so a slow-drip server can't keep a `recv` alive past it. Each chunk
     is a single `read1`, and the state-lock wait is bounded (60 s);
   - covered by `tests/test_limits.py`, including real slow-drip servers.
+- Plain-text rendering: every QML `Text` uses `Text.PlainText`. Qt's default
+  `AutoText` rendered HTML from Toggl data and fetched remote `<img>` URLs.
+  Notification text is markup-escaped. Guarded by `tests/test_qml_text.py`.
+- A 120 s budget covers all requests in one CLI run (a 429 retry shares its
+  request's deadline), at most 50 queued offline changes are replayed per sync,
+  and `Backend.qml` has a 180 s watchdog.
+- Stored data is bounded:
+  - nested API data is validated (non-object items skipped, types checked);
+  - strings are truncated (description 3,000, names 256, tags 128 characters);
+  - entries are capped;
+  - `state.json` is kept under 4 MB by dropping cached ranges, then the oldest
+    entries, never the offline queue;
+  - an oversized state file is reported and never overwritten, and file reads
+    are bounded even if the file grows.
+- Out-of-range times (e.g. `+99999999999999h`) are a usage error in both parsers.
 - `uninstall.sh --purge` deletes only the files the plugin creates (no `rm -rf`)
   and no longer passes `--yes`, so Omarchy asks before removing the plugin.
 - The cache folder is created 0700 and state files 0600; the token-file folder is 0700.

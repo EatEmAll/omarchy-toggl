@@ -72,6 +72,13 @@ function nextTimerMode(mode) {
   return TIMER_MODES[(i + 1) % TIMER_MODES.length]
 }
 
+// Notification bodies are rendered as markup by the Omarchy notification
+// daemon (bodyMarkupSupported); text from the API must never be markup.
+function escapeMarkup(text) {
+  return String(text === undefined || text === null ? "" : text)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
+
 // ------------------------------------------------------------------ time
 
 function pad2(n) { return n < 10 ? "0" + n : String(n) }
@@ -165,7 +172,14 @@ function weekStartKey(key, beginningOfWeek) {
 
 // Mirrors timeutil.parse_when (shared cases in tests/time_cases.json).
 // Returns epoch ms, or NaN when the text is not understood.
+var MAX_DATE_MS = 8.64e15
+
 function parseWhen(text, nowMs) {
+  var value = parseWhenRaw(text, nowMs)
+  return isFinite(value) && Math.abs(value) <= MAX_DATE_MS ? value : NaN
+}
+
+function parseWhenRaw(text, nowMs) {
   var raw = String(text || "").trim().toLowerCase()
   if (!raw) return NaN
   if (raw === "now") return Math.floor(nowMs / 1000) * 1000

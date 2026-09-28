@@ -32,6 +32,7 @@ Rectangle {
     spacing: Style.spacing.lg
 
     Text {
+      textFormat: Text.PlainText
       id: glyph
       text: root.icon
       color: root.tone
@@ -40,6 +41,7 @@ Rectangle {
       anchors.verticalCenter: parent.verticalCenter
     }
     Text {
+      textFormat: Text.PlainText
       width: parent.width - glyph.width - chip.width - parent.spacing * 2
       text: root.text
       color: root.foreground

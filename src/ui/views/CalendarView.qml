@@ -40,6 +40,7 @@ Flickable {
         width: parent.width
         height: root.hourHeight
         Text {
+          textFormat: Text.PlainText
           y: -height / 2
           width: root.gutter - Style.spacing.md
           horizontalAlignment: Text.AlignRight
@@ -98,6 +99,7 @@ Flickable {
           width: parent.width - Style.spacing.lg * 2
           visible: block.height > Style.space(16)
           Text {
+            textFormat: Text.PlainText
             width: parent.width
             text: (modelData.entry.description || "(no description)")
             color: ctx.foreground
@@ -107,6 +109,7 @@ Flickable {
             elide: Text.ElideRight
           }
           Text {
+            textFormat: Text.PlainText
             width: parent.width
             visible: block.height > Style.space(32)
             text: (modelData.entry.projectName || "No project") + " · " + Model.hm(modelData.seconds)

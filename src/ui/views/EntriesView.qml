@@ -225,6 +225,7 @@ Item {
             onToggled: root.toggleChecked(rowItem.ids, !root.allChecked(rowItem.ids))
           }
           Text {
+            textFormat: Text.PlainText
             anchors.verticalCenter: parent.verticalCenter
             text: row.label || ""
             color: ctx.foreground
@@ -234,6 +235,7 @@ Item {
           }
         }
         Text {
+          textFormat: Text.PlainText
           anchors.right: parent.right
           anchors.rightMargin: Style.spacing.xl
           anchors.bottom: parent.bottom
@@ -335,6 +337,7 @@ Item {
             width: parent.width
             spacing: Style.spacing.md
             Text {
+              textFormat: Text.PlainText
               width: Math.min(implicitWidth, parent.width - indicators.width - parent.spacing)
               text: rowItem.entry ? (rowItem.entry.description || "(no description)") : ""
               color: rowItem.entry && rowItem.entry.description ? ctx.foreground : Color.muted
@@ -349,6 +352,7 @@ Item {
               anchors.verticalCenter: parent.verticalCenter
               visible: rowItem.hot && rowItem.entry
               Text {
+                textFormat: Text.PlainText
                 text: "󰓹"
                 visible: rowItem.entry && (rowItem.entry.tags || []).length > 0 || rowItem.hot
                 color: rowItem.entry && (rowItem.entry.tags || []).length ? ctx.accent : Color.muted
@@ -361,6 +365,7 @@ Item {
                 HoverHandler { id: tagHover }
               }
               Text {
+                textFormat: Text.PlainText
                 text: "$"
                 color: rowItem.entry && rowItem.entry.billable ? ctx.accent : Color.muted
                 font.family: ctx.fontFamily
@@ -378,6 +383,7 @@ Item {
               visible: rowItem.entry && !!rowItem.entry.projectId
             }
             Text {
+              textFormat: Text.PlainText
               width: parent.width - Style.space(12)
               text: {
                 var e = rowItem.entry
@@ -406,6 +412,7 @@ Item {
           anchors.verticalCenter: parent.verticalCenter
           spacing: Style.spacing.xxs
           Text {
+            textFormat: Text.PlainText
             anchors.right: parent.right
             text: Model.hms(rowItem.liveSeconds)
             color: ctx.foreground
@@ -452,6 +459,7 @@ Item {
       height: Style.space(40)
       visible: root.rows.length > 0
       Text {
+        textFormat: Text.PlainText
         anchors.centerIn: parent
         text: "Older entries → Open Toggl ↗"
         color: Color.muted

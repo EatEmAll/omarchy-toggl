@@ -130,6 +130,7 @@ Rectangle {
     Row {
       width: parent.width
       Text {
+        textFormat: Text.PlainText
         width: parent.width - closeChip.width
         text: root.createMode ? "New entry" : "Edit entry"
         color: ctx.foreground
@@ -192,6 +193,7 @@ Rectangle {
         }
       }
       Text {
+        textFormat: Text.PlainText
         anchors.verticalCenter: parent.verticalCenter
         visible: !root.project
         text: "No project"
@@ -231,6 +233,7 @@ Rectangle {
         onClicked: root.billable = !root.billable
       }
       Text {
+        textFormat: Text.PlainText
         anchors.verticalCenter: parent.verticalCenter
         visible: root.tags.length > 0
         text: root.tags.join(", ")
@@ -250,6 +253,7 @@ Rectangle {
       Repeater {
         model: ["START", "STOP", "DURATION"]
         delegate: Text {
+          textFormat: Text.PlainText
           required property var modelData
           text: modelData
           color: Color.muted
@@ -308,6 +312,7 @@ Rectangle {
     }
 
     Text {
+      textFormat: Text.PlainText
       visible: root.error !== ""
       width: parent.width
       text: root.error

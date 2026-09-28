@@ -53,6 +53,7 @@ Rectangle {
         anchors.verticalCenter: parent.verticalCenter
 
         Text {
+          textFormat: Text.PlainText
           anchors.centerIn: parent
           text: root.icon
           color: root.accent
@@ -67,6 +68,7 @@ Rectangle {
         spacing: Style.spacing.xxs
 
         Text {
+          textFormat: Text.PlainText
           width: parent.width
           visible: root.title !== ""
           text: root.title
@@ -78,6 +80,7 @@ Rectangle {
         }
 
         Text {
+          textFormat: Text.PlainText
           width: parent.width
           visible: root.subtitle !== ""
           text: root.subtitle

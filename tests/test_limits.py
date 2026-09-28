@@ -310,3 +310,111 @@ class LockWait(unittest.TestCase):
                         pass
                 finally:
                     os.close(fd)
+
+
+class RunBudget(unittest.TestCase):
+    def test_all_requests_share_one_budget(self):
+        # Each request is quick (a few ticks, far inside its own 30 s deadline),
+        # but together they exceed the run budget.
+        ticks = itertools.count()
+        opener = FakeOpener().on("GET", "/me", lambda p, b: ME)
+        client = api_with(opener)
+        client._monotonic = lambda: next(ticks)
+        client._budget_end = 40
+        with self.assertRaises(NetError):
+            for _ in range(30):
+                client.me()
+        self.assertLess(len(opener.requests), 30)
+
+    def test_retry_after_429_shares_the_request_deadline(self):
+        calls = []
+
+        def opener(req, timeout=None):
+            calls.append(1)
+            raise urllib.error.HTTPError(req.full_url, 429, "slow", Message(), io.BytesIO(b""))
+        client = api_with(opener)
+        seen = []
+        real = api_mod._deadline
+
+        def spy(seconds):
+            seen.append(seconds)
+            return real(seconds)
+        with mock.patch.object(api_mod, "_deadline", spy), self.assertRaises(ApiError):
+            client.me()
+        self.assertEqual(len(calls), 2)
+        self.assertLessEqual(seen[-1], seen[0])          # the retry got no fresh 30 s
+
+    def test_replay_is_capped_per_sync(self):
+        from src.omarchy_toggl.sync import MAX_REPLAY
+        opener = FakeOpener().on("GET", "/me", lambda p, b: ME).on("GET", "/me/time_entries", lambda p, b: [])
+        opener.on("DELETE", "/workspaces/7/time_entries/", lambda p, b: None)
+        engine, store = make_engine(opener)
+        engine.sync(force=True)
+        with store.locked():
+            state = store.load()
+            state["pending"] = [{"op": "delete", "wid": 7, "id": i + 1} for i in range(MAX_REPLAY + 30)]
+            store.save(state)
+        engine.sync(force=True)
+        deletes = [r for r in opener.requests if r[0] == "DELETE"]
+        self.assertEqual(len(deletes), MAX_REPLAY)
+        with store.locked():
+            self.assertEqual(len(store.load()["pending"]), 30)
+
+
+class StateBounds(unittest.TestCase):
+    def entry(self, i, desc="x"):
+        return {"id": i + 1, "workspace_id": 7, "description": desc, "project_id": None,
+                "start": "2026-09-26T09:00:00Z", "stop": "2026-09-26T10:00:00Z", "duration": 3600}
+
+    def test_nested_garbage_is_skipped_and_strings_truncated(self):
+        from src.omarchy_toggl.sync import MAX_DESCRIPTION, normalize
+        raw = [self.entry(0, "y" * 100000), "not a dict", 7, None, {"id": "x"}, {"id": 5, "start": "garbage"},
+               {"id": 6, "start": "2026-09-26T09:00:00Z", "tags": ["ok", 3, {"x": 1}], "duration": float("nan")}]
+        out = [normalize(r) for r in raw]
+        self.assertEqual(len(out[0]["description"]), MAX_DESCRIPTION)
+        self.assertEqual(out[1:6], [None] * 5)
+        self.assertEqual(out[6]["tags"], ["ok"])
+        me = {**ME, "workspaces": ["bad", {"id": 7, "name": "n" * 10000}], "projects": [1, {"id": "no"}, None]}
+        opener = FakeOpener().on("GET", "/me", lambda p, b: me).on("GET", "/me/time_entries", lambda p, b: raw)
+        engine, _ = make_engine(opener)
+        state = engine.sync(force=True)["state"]
+        self.assertEqual(len(state["entries"]), 1)
+        self.assertEqual(state["projects"], [])
+        self.assertEqual(len(state["auth"]["workspaces"][0]["name"]), 256)
+
+    def test_state_file_stays_bounded_and_queue_is_kept(self):
+        from src.omarchy_toggl import sync as sync_mod
+        big = [self.entry(i, "d" * 2900) for i in range(2500)]   # ~7.3 MB response, > 4 MB state cap
+        opener = FakeOpener().on("GET", "/me", lambda p, b: ME).on("GET", "/me/time_entries", lambda p, b: big)
+        engine, store = make_engine(opener)
+        with store.locked():
+            state = store.load()
+            state["pending"] = [{"op": "delete", "wid": 7, "id": -1 - i, "tempId": -1 - i} for i in range(5)]
+            store.save(state)
+        opener.offline = False
+        with mock.patch.object(sync_mod, "MAX_REPLAY", 0):
+            engine.sync(force=True)
+        size = (store.dir / "state.json").stat().st_size
+        self.assertLessEqual(size, sync_mod.MAX_STATE_BYTES)
+        with store.locked():
+            loaded = store.load()
+        self.assertEqual(len(loaded["pending"]), 5)
+        self.assertGreater(len(loaded["entries"]), 0)
+
+    def test_oversized_state_is_never_overwritten(self):
+        from src.omarchy_toggl import safefs
+        engine, store = make_engine(FakeOpener())
+        store.dir.mkdir(parents=True, exist_ok=True)
+        (store.dir / "state.json").write_bytes(b"{" + b" " * (safefs.MAX_READ + 10) + b"}")
+        with self.assertRaises(OSError):
+            with store.locked():
+                store.load()
+        self.assertGreater((store.dir / "state.json").stat().st_size, safefs.MAX_READ)
+
+
+class TimeParsing(unittest.TestCase):
+    def test_overflow_is_a_usage_error(self):
+        from src.omarchy_toggl.timeutil import parse_when
+        for text in ("-99999999999999m", "+99999999999999h"):
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                parse_when(text)

@@ -139,3 +139,14 @@ Deno.test("timer mode cycles and honours legacy showSeconds", () => {
   assertEquals(M.timerMode({ timerMode: "bogus" }), "hms");
   assertEquals(["hms", "hm", "hidden"].map(M.nextTimerMode), ["hm", "hidden", "hms"]);
 });
+
+Deno.test("escapeMarkup neutralises notification markup", () => {
+  assertEquals(M.escapeMarkup('a <img src="http://x/y.png"> & <b>b</b>'),
+    'a &lt;img src="http://x/y.png"&gt; &amp; &lt;b&gt;b&lt;/b&gt;');
+  assertEquals(M.escapeMarkup(null), "");
+});
+
+Deno.test("parseWhen rejects out-of-range times", () => {
+  assert(isNaN(M.parseWhen("+99999999999999h", NOW)));
+  assert(isNaN(M.parseWhen("-99999999999999m", NOW)));
+});

@@ -31,6 +31,7 @@ Flickable {
       width: parent.width
       height: Style.space(24)
       Text {
+        textFormat: Text.PlainText
         anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
         text: ctx.range.from ? Model.shortDate(ctx.range.from) + " – " + Model.shortDate(ctx.range.to) : ""
@@ -40,6 +41,7 @@ Flickable {
         font.bold: true
       }
       Text {
+        textFormat: Text.PlainText
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
         text: "Total  " + Model.hms(root.sheet.total)
@@ -75,6 +77,7 @@ Flickable {
           Row {
             anchors.fill: parent
             Text {
+              textFormat: Text.PlainText
               width: root.nameWidth
               leftPadding: Style.spacing.lg
               anchors.verticalCenter: parent.verticalCenter
@@ -93,6 +96,7 @@ Flickable {
                 color: modelData.date === ctx.todayKey ? Qt.rgba(ctx.accent.r, ctx.accent.g, ctx.accent.b, 0.12) : "transparent"
                 radius: Style.space(4)
                 Text {
+                  textFormat: Text.PlainText
                   anchors.centerIn: parent
                   text: Model.weekdayShort(modelData.date)
                   color: modelData.date === ctx.todayKey ? ctx.accent : Color.muted
@@ -103,6 +107,7 @@ Flickable {
               }
             }
             Text {
+              textFormat: Text.PlainText
               width: root.totalWidth
               anchors.verticalCenter: parent.verticalCenter
               horizontalAlignment: Text.AlignRight
@@ -133,6 +138,7 @@ Flickable {
                 spacing: Style.spacing.md
                 ProjectDot { anchors.verticalCenter: parent.verticalCenter; dotColor: projRow.tone }
                 Text {
+                  textFormat: Text.PlainText
                   anchors.verticalCenter: parent.verticalCenter
                   width: root.nameWidth - Style.space(28)
                   text: modelData.name
@@ -155,6 +161,7 @@ Flickable {
                   readonly property color tone: projRow.tone
                   color: Qt.rgba(tone.r, tone.g, tone.b, root.cellAlpha(modelData))
                   Text {
+                    textFormat: Text.PlainText
                     anchors.centerIn: parent
                     text: Model.compactDuration(modelData)
                     color: modelData > 0 ? ctx.foreground : Color.muted
@@ -172,6 +179,7 @@ Flickable {
                 }
               }
               Text {
+                textFormat: Text.PlainText
                 width: root.totalWidth
                 anchors.verticalCenter: parent.verticalCenter
                 horizontalAlignment: Text.AlignRight
@@ -192,6 +200,7 @@ Flickable {
         Row {
           height: Style.space(30)
           Text {
+            textFormat: Text.PlainText
             width: root.nameWidth
             leftPadding: Style.spacing.lg
             anchors.verticalCenter: parent.verticalCenter
@@ -204,6 +213,7 @@ Flickable {
           Repeater {
             model: root.sheet.days
             delegate: Text {
+              textFormat: Text.PlainText
               required property var modelData
               width: root.dayWidth
               anchors.verticalCenter: parent.verticalCenter
@@ -217,6 +227,7 @@ Flickable {
             }
           }
           Text {
+            textFormat: Text.PlainText
             width: root.totalWidth
             anchors.verticalCenter: parent.verticalCenter
             horizontalAlignment: Text.AlignRight
@@ -237,6 +248,7 @@ Flickable {
       spacing: Style.spacing.md
       visible: root.sheet.days.length > 1
       Text {
+        textFormat: Text.PlainText
         text: "BY DAY"
         color: Color.muted
         font.family: ctx.fontFamily
@@ -272,6 +284,7 @@ Flickable {
               }
             }
             Text {
+              textFormat: Text.PlainText
               width: parent.width
               horizontalAlignment: Text.AlignHCenter
               text: Model.weekdayShort(modelData.date)

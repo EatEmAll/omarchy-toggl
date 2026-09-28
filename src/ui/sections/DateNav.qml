@@ -24,6 +24,7 @@ Rectangle {
       color: prevMouse.containsMouse && root.canStep ? Qt.rgba(ctx.foreground.r, ctx.foreground.g, ctx.foreground.b, 0.06) : "transparent"
       radius: root.radius
       Text {
+        textFormat: Text.PlainText
         anchors.centerIn: parent
         text: "‹"
         color: root.canStep ? ctx.foreground : Color.muted
@@ -44,6 +45,7 @@ Rectangle {
         anchors.centerIn: parent
         spacing: Style.spacing.md
         Text {
+          textFormat: Text.PlainText
           text: ctx.rangeLoading ? "󰑓" : "󰃭"
           color: ctx.foreground
           font.family: ctx.fontFamily
@@ -53,6 +55,7 @@ Rectangle {
             onRunningChanged: if (!running) parent.rotation = 0 }
         }
         Text {
+          textFormat: Text.PlainText
           text: ctx.range.label
           color: ctx.foreground
           font.family: ctx.fontFamily
@@ -90,6 +93,7 @@ Rectangle {
       radius: root.radius
       color: nextMouse.containsMouse && root.canStep ? Qt.rgba(ctx.foreground.r, ctx.foreground.g, ctx.foreground.b, 0.06) : "transparent"
       Text {
+        textFormat: Text.PlainText
         anchors.centerIn: parent
         text: "›"
         color: root.canStep ? ctx.foreground : Color.muted

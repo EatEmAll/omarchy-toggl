@@ -30,6 +30,10 @@ class UnsafePath(OSError):
     """A path we own is a symlink, owned by someone else, or not a regular file/folder."""
 
 
+class TooLarge(OSError):
+    """A file we own is larger than we are willing to read."""
+
+
 def xdg_dir(var: str, fallback: str) -> Path:
     """$XDG_* value if absolute (relative values must be ignored per the spec)."""
     value = os.environ.get(var, "")
@@ -96,13 +100,17 @@ def read_regular(dirfd: int, name: str, label: str = "", max_bytes: int = MAX_RE
         if not stat.S_ISREG(st.st_mode):
             raise UnsafePath(f"{label or name} is not a regular file")
         if st.st_size > max_bytes:
-            raise UnsafePath(f"{label or name} is unexpectedly large")
+            raise TooLarge(f"{label or name} is unexpectedly large ({st.st_size} bytes)")
         chunks = []
-        while True:
-            chunk = os.read(fd, 65536)
+        total = 0
+        while True:                      # bounded even if the file grows after fstat
+            chunk = os.read(fd, min(65536, max_bytes + 1 - total))
             if not chunk:
                 break
             chunks.append(chunk)
+            total += len(chunk)
+            if total > max_bytes:
+                raise TooLarge(f"{label or name} is unexpectedly large")
         return b"".join(chunks), st
     finally:
         os.close(fd)

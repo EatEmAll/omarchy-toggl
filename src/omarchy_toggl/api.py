@@ -47,6 +47,7 @@ MAX_BODY = 8 * 1024 * 1024        # largest response body we will read
 MAX_ERROR_BODY = 16 * 1024        # error bodies are only used for a short message
 SOCKET_TIMEOUT = 10               # per socket operation
 DEADLINE = 30                     # whole request, including a slow-drip body
+RUN_BUDGET = 120                  # all requests of one CLI run together
 MAX_PAGES = 50                    # 50 x 200 projects
 CHUNK = 64 * 1024
 
@@ -162,12 +163,13 @@ class Api:
         self._sleep = sleep
         self._clock = clock
         self._monotonic = time.monotonic
+        self._budget_end = self._monotonic() + RUN_BUDGET
         self.quota: dict[str, dict[str, int]] = {}
         self.calls: list[str] = []
 
     # ------------------------------------------------------------------ core
     def request(self, method: str, path: str, body: Any = None, query: dict[str, Any] | None = None,
-                base: str = BASE, retry: bool = True) -> Any:
+                base: str = BASE, retry: bool = True, _until: float | None = None) -> Any:
         url = base + path
         if query:
             url += "?" + urllib.parse.urlencode({k: v for k, v in query.items() if v is not None},
@@ -185,9 +187,13 @@ class Api:
             raise ApiError(f"refusing to send the API token to {parts.scheme}://{parts.hostname}")
         bucket = "user" if path.startswith("/me") else "workspace"
         self.calls.append(f"{method} {path}")
-        deadline = self._monotonic() + DEADLINE
+        # One deadline per request (a 429 retry shares it), never past the
+        # budget for the whole CLI run.
+        deadline = _until if _until is not None else min(self._monotonic() + DEADLINE, self._budget_end)
+        if deadline - self._monotonic() <= 0:
+            raise NetError("time budget for this run is used up; try again")
         try:
-            with _deadline(DEADLINE), self._open(req, timeout=SOCKET_TIMEOUT) as resp:
+            with _deadline(deadline - self._monotonic()), self._open(req, timeout=SOCKET_TIMEOUT) as resp:
                 final = urllib.parse.urlsplit(resp.geturl()) if hasattr(resp, "geturl") else parts
                 if (final.scheme, final.hostname) != ALLOWED_ORIGIN:
                     raise ApiError("Toggl API response came from an unexpected location")
@@ -210,8 +216,8 @@ class Api:
             if status == 429:
                 if retry:
                     wait = _int(err.headers.get("Retry-After")) if err.headers else None
-                    self._sleep(min(max(wait or 2, 1), 5))
-                    return self.request(method, path, body, query, base, retry=False)
+                    self._sleep(min(max(wait or 2, 1), 5, max(deadline - self._monotonic(), 0)))
+                    return self.request(method, path, body, query, base, retry=False, _until=deadline)
                 raise RateError("Toggl is rate limiting requests", status) from None
             if status == 404:
                 raise NotFound(detail or "not found", status) from None

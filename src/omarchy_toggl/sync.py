@@ -11,6 +11,8 @@ Budget rules (Free plan: 30 ``/me`` requests per hour):
 
 from __future__ import annotations
 
+import json
+import math
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
@@ -26,9 +28,14 @@ FORCED_INTERVAL = 60
 META_TTL = 12 * 3600
 QUOTA_FLOOR = 3
 MAX_PENDING = 500          # offline changes kept for replay
+MAX_REPLAY = 50            # replayed per sync, so one run stays short
 MAX_DESCRIPTION = 3000     # Toggl's own description limit
 MAX_TAGS = 50
 MAX_TAG_LENGTH = 128
+MAX_NAME = 256             # project / client / workspace / user names
+MAX_ENTRIES = 5000         # entries kept in the history window
+MAX_RANGE_ENTRIES = 2000   # entries kept per cached range
+MAX_STATE_BYTES = 4 * 1024 * 1024   # state.json stays well under the 8 MB read cap
 
 
 class UsageError(Exception):
@@ -51,37 +58,97 @@ def check_text(description: Any = None, tags: Any = None) -> None:
             raise UsageError(f"at most {MAX_TAGS} tags of up to {MAX_TAG_LENGTH} characters")
 
 
-def normalize(raw: dict[str, Any]) -> dict[str, Any]:
+def _id(value: Any) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _text(value: Any, limit: int) -> str | None:
+    return value[:limit] if isinstance(value, str) else None
+
+
+def _dicts(value: Any) -> list[dict[str, Any]]:
+    return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
+
+def _color(value: Any) -> str | None:
+    return value if isinstance(value, str) and len(value) == 7 and value[0] == "#" \
+        and all(c in "0123456789abcdefABCDEF" for c in value[1:]) else None
+
+
+def normalize(raw: Any) -> dict[str, Any] | None:
+    """A validated, size-bounded entry from API data, or None if it is malformed."""
+    if not isinstance(raw, dict) or _id(raw.get("id")) is None:
+        return None
+    start = _to_z(raw.get("start"))
+    if start is None:
+        return None
     duration = raw.get("duration")
-    stop = raw.get("stop")
-    running = stop is None or (isinstance(duration, (int, float)) and duration < 0)
+    if not (isinstance(duration, (int, float)) and not isinstance(duration, bool) and math.isfinite(duration)):
+        duration = None
+    stop = _to_z(raw.get("stop"))
+    running = stop is None or (duration is not None and duration < 0)
     seconds = None
     if not running:
-        start_dt, stop_dt = parse_iso(raw.get("start")), parse_iso(stop)
-        if isinstance(duration, (int, float)) and duration >= 0:
+        if duration is not None and 0 <= duration < 10 * 365 * 86400:
             seconds = int(duration)
-        elif start_dt and stop_dt:
-            seconds = int((stop_dt - start_dt).total_seconds())
+        else:
+            start_dt, stop_dt = parse_iso(start), parse_iso(stop)
+            seconds = max(0, int((stop_dt - start_dt).total_seconds())) if start_dt and stop_dt else None
+    tags = raw.get("tags") if isinstance(raw.get("tags"), list) else []
+    tag_ids = raw.get("tag_ids") if isinstance(raw.get("tag_ids"), list) else []
     return {
-        "id": raw.get("id"),
-        "wid": raw.get("workspace_id") or raw.get("wid"),
-        "description": raw.get("description") or "",
-        "projectId": raw.get("project_id") or raw.get("pid"),
-        "projectName": raw.get("project_name"),
-        "projectColor": raw.get("project_color"),
-        "clientName": raw.get("client_name"),
-        "tags": list(raw.get("tags") or []),
-        "tagIds": list(raw.get("tag_ids") or []),
-        "billable": bool(raw.get("billable")),
-        "start": _to_z(raw.get("start")),
-        "stop": None if running else _to_z(stop),
+        "id": raw["id"],
+        "wid": _id(raw.get("workspace_id")) or _id(raw.get("wid")),
+        "description": _text(raw.get("description"), MAX_DESCRIPTION) or "",
+        "projectId": _id(raw.get("project_id")) or _id(raw.get("pid")),
+        "projectName": _text(raw.get("project_name"), MAX_NAME),
+        "projectColor": _color(raw.get("project_color")),
+        "clientName": _text(raw.get("client_name"), MAX_NAME),
+        "tags": [t[:MAX_TAG_LENGTH] for t in tags if isinstance(t, str)][:MAX_TAGS],
+        "tagIds": [t for t in tag_ids if _id(t) is not None][:MAX_TAGS],
+        "billable": raw.get("billable") is True,
+        "start": start,
+        "stop": None if running else stop,
         "seconds": seconds,
     }
 
 
+def _entry(raw: Any) -> dict[str, Any]:
+    entry = normalize(raw)
+    if entry is None:
+        raise ApiError("unexpected entry data from Toggl")
+    return entry
+
+
+def compact(state: dict[str, Any]) -> None:
+    """Keep state.json bounded: cap entries, then drop cached ranges and the
+    oldest entries until it fits. Queued offline changes are never dropped."""
+    state["entries"] = _sort(state.get("entries") or [])[:MAX_ENTRIES]
+    for rng in (state.get("ranges") or {}).values():
+        rng["entries"] = (rng.get("entries") or [])[:MAX_RANGE_ENTRIES]
+
+    def size() -> int:
+        return len(json.dumps(state, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+
+    while size() > MAX_STATE_BYTES:
+        ranges = state.get("ranges") or {}
+        if ranges:
+            oldest = min(ranges, key=lambda k: ranges[k].get("fetchedAt") or 0)
+            ranges.pop(oldest)
+        elif state["entries"]:
+            state["entries"] = state["entries"][: len(state["entries"]) * 9 // 10]
+        else:
+            break
+
+
 def _to_z(value: Any) -> str | None:
-    dt = parse_iso(value) if value else None
-    return to_api(dt) if dt else None
+    if not isinstance(value, str) or not value or len(value) > 64:
+        return None
+    try:
+        dt = parse_iso(value)
+        return to_api(dt) if dt else None
+    except (ValueError, OverflowError):
+        return None
 
 
 def _enrich(entry: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
@@ -196,6 +263,7 @@ class Engine:
             _merge_quota(state, self._api)
         recompute(state)
         state["updatedAt"] = self._stamp()
+        compact(state)
         self.store.save(state)
         return state
 
@@ -233,31 +301,39 @@ class Engine:
     def _fetch_meta(self, state: dict[str, Any]) -> None:
         me = self.api().me(related=True) or {}
         cfg_wid = (state.get("config") or {}).get("workspaceId")
-        workspaces = [{"id": w.get("id"), "name": w.get("name")} for w in me.get("workspaces") or []]
-        clients = {c.get("id"): c.get("name") for c in me.get("clients") or []}
+        workspaces = [{"id": w["id"], "name": _text(w.get("name"), MAX_NAME) or ""}
+                      for w in _dicts(me.get("workspaces")) if _id(w.get("id")) is not None]
+        clients = {c["id"]: _text(c.get("name"), MAX_NAME) for c in _dicts(me.get("clients"))
+                   if _id(c.get("id")) is not None}
+        bow = me.get("beginning_of_week")
         state["auth"] = {
             "ok": True,
             "source": self._source,
             "user": {
-                "fullname": me.get("fullname"),
-                "email": me.get("email"),
-                "timezone": me.get("timezone"),
-                "beginningOfWeek": me.get("beginning_of_week", 1),
+                "fullname": _text(me.get("fullname"), MAX_NAME),
+                "email": _text(me.get("email"), MAX_NAME),
+                "timezone": _text(me.get("timezone"), 64),
+                "beginningOfWeek": bow if _id(bow) is not None and 0 <= bow <= 6 else 1,
             },
-            "workspaceId": int(cfg_wid) if cfg_wid else me.get("default_workspace_id"),
+            "workspaceId": int(cfg_wid) if cfg_wid else _id(me.get("default_workspace_id")),
             "workspaces": workspaces,
         }
         wid = state["auth"]["workspaceId"]
+
+        def in_workspace(item: dict[str, Any]) -> bool:
+            return not wid or (_id(item.get("workspace_id")) or _id(item.get("wid"))) == wid
+
         state["projects"] = sorted([
-            {"id": p.get("id"), "name": p.get("name"), "color": p.get("color"),
-             "active": p.get("active", True), "clientName": clients.get(p.get("client_id") or p.get("cid")),
-             "wid": p.get("workspace_id") or p.get("wid")}
-            for p in me.get("projects") or [] if not wid or (p.get("workspace_id") or p.get("wid")) == wid
-        ], key=lambda p: str(p.get("name") or "").lower())
+            {"id": p["id"], "name": _text(p.get("name"), MAX_NAME) or "", "color": _color(p.get("color")),
+             "active": p.get("active") is not False,
+             "clientName": clients.get(_id(p.get("client_id")) or _id(p.get("cid"))),
+             "wid": _id(p.get("workspace_id")) or _id(p.get("wid"))}
+            for p in _dicts(me.get("projects")) if _id(p.get("id")) is not None and in_workspace(p)
+        ][:5000], key=lambda p: p["name"].lower())
         state["tags"] = sorted([
-            {"id": t.get("id"), "name": t.get("name")}
-            for t in me.get("tags") or [] if not wid or (t.get("workspace_id") or t.get("wid")) == wid
-        ], key=lambda t: str(t.get("name") or "").lower())
+            {"id": t["id"], "name": (_text(t.get("name"), MAX_TAG_LENGTH) or "")}
+            for t in _dicts(me.get("tags")) if _id(t.get("id")) is not None and in_workspace(t)
+        ][:5000], key=lambda t: t["name"].lower())
         state["lastMetaSyncAt"] = int(time.time())
 
     def _quota_low(self, state: dict[str, Any]) -> dict[str, Any] | None:
@@ -320,10 +396,13 @@ class Engine:
         previous = state.get("running")
         running = None
         entries = []
-        for item in raw if isinstance(raw, list) else []:
+        for item in _dicts(raw):
             if item.get("server_deleted_at") or item.get("deleted_at"):
                 continue
-            entry = _enrich(normalize(item), state)
+            entry = normalize(item)
+            if entry is None:
+                continue
+            entry = _enrich(entry, state)
             if entry["stop"] is None:
                 running = entry
             else:
@@ -332,8 +411,9 @@ class Engine:
             started = parse_iso(previous.get("start"))
             if started and started.astimezone(tz).date() < first:
                 current = self.api().current()
-                if current:
-                    running = _enrich(normalize(current), state)
+                current_entry = normalize(current)
+                if current_entry:
+                    running = _enrich(current_entry, state)
         state["running"] = running
         state["entries"] = _sort(entries)
 
@@ -348,8 +428,8 @@ class Engine:
                 raise QuotaError(low["message"], 402, int(low["resetsAt"] - time.time()))
             end = (datetime.fromisoformat(last) + timedelta(days=1)).date().isoformat()
             raw = self.api().entries(first, end)
-            entries = [_enrich(normalize(e), state) for e in raw or []
-                       if e.get("stop") and not e.get("server_deleted_at")]
+            entries = [_enrich(e, state) for e in (normalize(item) for item in _dicts(raw)
+                       if not item.get("server_deleted_at")) if e and e["stop"]]
             remember_range(state, key, {"from": first, "to": last, "entries": _sort(entries),
                                         "fetchedAt": int(time.time())})
             return {"fetched": len(entries)}
@@ -502,8 +582,8 @@ class Engine:
             temp_id = -int(time.time() * 1000)
             self._queue(state, {"op": "create", "wid": wid, "body": body, "tempId": temp_id})
             fake = {**body, "id": temp_id, "workspace_id": wid, "stop": body.get("stop")}
-            return apply_entry(state, normalize(fake))
-        return apply_entry(state, normalize(raw))
+            return apply_entry(state, _entry(fake))
+        return apply_entry(state, _entry(raw))
 
     def _stop(self, state: dict[str, Any], at: datetime | None) -> dict[str, Any]:
         running = state["running"]
@@ -528,7 +608,7 @@ class Engine:
         if raw is None:  # 409: already stopped elsewhere
             remove_entry(state, running["id"])
             return {"alreadyStopped": True}
-        return apply_entry(state, normalize(raw))
+        return apply_entry(state, _entry(raw))
 
     def _update_body(self, entry: dict[str, Any], fields: dict[str, Any]) -> dict[str, Any]:
         body: dict[str, Any] = {}
@@ -585,7 +665,7 @@ class Engine:
         except NetError:
             self._queue(state, {"op": "update", "wid": wid, "id": entry["id"], "body": body})
             return apply_entry(state, optimistic)
-        return apply_entry(state, normalize(raw))
+        return apply_entry(state, _entry(raw))
 
     def _replay(self, state: dict[str, Any]) -> None:
         pending = list(state.get("pending") or [])
@@ -594,20 +674,23 @@ class Engine:
         mapping: dict[int, int] = {}
         remaining: list[dict[str, Any]] = []
         for index, op in enumerate(pending):
+            if index >= MAX_REPLAY:
+                state["pending"] = pending[index:]      # the rest drains on the next syncs
+                return
             eid = op.get("id")
             if isinstance(eid, int) and eid in mapping:
                 eid = mapping[eid]
             try:
                 if op["op"] == "create":
                     raw = self.api().create(op["wid"], op["body"])
-                    mapping[op["tempId"]] = raw["id"]
+                    mapping[op["tempId"]] = _entry(raw)["id"]
                     remove_entry(state, op["tempId"])
-                    apply_entry(state, normalize(raw))
+                    apply_entry(state, _entry(raw))
                 elif isinstance(eid, int) and eid < 0:
                     continue  # its create was dropped; nothing to apply
                 elif op["op"] == "update":
                     raw = self.api().update(op["wid"], eid, op["body"])
-                    apply_entry(state, normalize(raw))
+                    apply_entry(state, _entry(raw))
                 elif op["op"] == "delete":
                     self.api().delete(op["wid"], eid)
             except (NotFound, Conflict):

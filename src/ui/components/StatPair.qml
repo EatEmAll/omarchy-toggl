@@ -12,6 +12,7 @@ Item {
   implicitHeight: Math.max(left.implicitHeight, right.implicitHeight)
 
   Text {
+    textFormat: Text.PlainText
     id: left
     anchors.left: parent.left
     anchors.right: right.left
@@ -23,6 +24,7 @@ Item {
     elide: Text.ElideRight
   }
   Text {
+    textFormat: Text.PlainText
     id: right
     anchors.right: parent.right
     text: root.value

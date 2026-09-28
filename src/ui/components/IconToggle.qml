@@ -28,6 +28,7 @@ Rectangle {
   border.color: Qt.rgba(accent.r, accent.g, accent.b, 0.28)
 
   Text {
+    textFormat: Text.PlainText
     anchors.centerIn: parent
     text: root.icon
     color: root.active ? root.accent : root.idleColor

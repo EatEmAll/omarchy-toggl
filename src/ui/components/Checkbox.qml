@@ -18,6 +18,7 @@ Rectangle {
   border.color: checked || partial ? accent : Qt.rgba(foreground.r, foreground.g, foreground.b, mouse.containsMouse ? 0.6 : 0.35)
 
   Text {
+    textFormat: Text.PlainText
     anchors.centerIn: parent
     visible: root.checked || root.partial
     text: root.checked ? "✓" : "–"

@@ -78,6 +78,10 @@ class Store:
                 return None
             try:
                 found = safefs.read_regular(dirfd, name, str(self.dir / name))
+            except safefs.TooLarge as exc:
+                # Never treat an oversized file as missing: the next write would
+                # replace it (and any queued offline changes) with an empty state.
+                raise OSError(f"{exc}; move it aside or delete it to start fresh") from None
             except OSError:
                 return None
         if found is None:

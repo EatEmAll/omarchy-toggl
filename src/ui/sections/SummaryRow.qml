@@ -20,6 +20,7 @@ Row {
       spacing: Style.spacing.lg
       anchors.verticalCenter: parent.verticalCenter
       Text {
+        textFormat: Text.PlainText
         anchors.verticalCenter: parent.verticalCenter
         text: modelData.label
         color: Color.muted
@@ -28,6 +29,7 @@ Row {
         font.letterSpacing: 1
       }
       Text {
+        textFormat: Text.PlainText
         anchors.verticalCenter: parent.verticalCenter
         text: modelData.value
         color: ctx.foreground

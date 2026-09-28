@@ -205,7 +205,10 @@ Item {
   }
 
   function notify(glyph, title, body) {
-    Util.execArgv(["omarchy-notification-send", "-g", glyph, "--app-name", "Toggl Track", String(title), String(body || "")])
+    // Title and body can contain text from the API; escape it so the daemon's
+    // markup support can't turn it into links, images or formatting.
+    Util.execArgv(["omarchy-notification-send", "-g", glyph, "--app-name", "Toggl Track",
+                   Model.escapeMarkup(title), Model.escapeMarkup(body)])
   }
 
   function consumeView() {

@@ -29,6 +29,7 @@ Rectangle {
       spacing: Style.spacing.lg
       width: parent.width
       Text {
+        textFormat: Text.PlainText
         text: "󰒲"
         color: ctx.accent
         font.family: ctx.fontFamily
@@ -39,6 +40,7 @@ Rectangle {
         width: parent.width - Style.space(40)
         anchors.verticalCenter: parent.verticalCenter
         Text {
+          textFormat: Text.PlainText
           width: parent.width
           text: root.prompt
             ? (root.prompt.reason === "suspend" ? "Suspended " : "You were away ") + Math.round((root.prompt.until - root.prompt.since) / 60000)
@@ -53,6 +55,7 @@ Rectangle {
         Row {
           spacing: Style.spacing.sm
           Text {
+            textFormat: Text.PlainText
             text: "while tracking"
             color: Color.muted
             font.family: ctx.fontFamily
@@ -63,6 +66,7 @@ Rectangle {
             dotColor: root.prompt && root.prompt.projectColor ? root.prompt.projectColor : Color.muted
           }
           Text {
+            textFormat: Text.PlainText
             text: root.prompt ? root.prompt.description + (root.prompt.projectName ? " · " + root.prompt.projectName : "") : ""
             color: ctx.foreground
             font.family: ctx.fontFamily

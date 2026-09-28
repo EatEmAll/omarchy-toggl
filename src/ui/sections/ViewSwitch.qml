@@ -49,6 +49,7 @@ Item {
             color: Qt.rgba(ctx.foreground.r, ctx.foreground.g, ctx.foreground.b, 0.2)
           }
           Text {
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             text: modelData.label
             color: parent.selected ? ctx.foreground : Qt.rgba(ctx.foreground.r, ctx.foreground.g, ctx.foreground.b, 0.8)

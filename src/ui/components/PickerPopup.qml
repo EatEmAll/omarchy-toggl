@@ -121,6 +121,7 @@ Popup {
           spacing: Style.spacing.lg
 
           Text {
+            textFormat: Text.PlainText
             visible: root.multi
             anchors.verticalCenter: parent.verticalCenter
             text: root.isChecked(modelData.value) ? "󰄵" : "󰄱"
@@ -134,6 +135,7 @@ Popup {
             dotColor: modelData.color ? modelData.color : Color.muted
           }
           Text {
+            textFormat: Text.PlainText
             anchors.verticalCenter: parent.verticalCenter
             width: parent.width - Style.space(90)
             text: modelData.label
@@ -144,6 +146,7 @@ Popup {
             elide: Text.ElideRight
           }
           Text {
+            textFormat: Text.PlainText
             anchors.verticalCenter: parent.verticalCenter
             text: modelData.detail || ""
             color: Color.muted
@@ -162,6 +165,7 @@ Popup {
       }
 
       Text {
+        textFormat: Text.PlainText
         visible: root.filtered.length === 0
         anchors.centerIn: parent
         text: root.emptyText

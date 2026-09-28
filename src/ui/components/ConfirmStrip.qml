@@ -25,6 +25,7 @@ Rectangle {
     spacing: Style.spacing.md
 
     Text {
+      textFormat: Text.PlainText
       width: parent.width
       text: root.message
       color: root.foreground

@@ -263,8 +263,14 @@ plugin stays within it:
 - **Network.** The plugin only talks to `https://api.track.toggl.com`. It never
   follows redirects, so the token can't be forwarded elsewhere. Responses are read
   with hard limits (8 MB per body, 16 KB per error body, 30 s per request, 50
-  pages) and must be JSON of the expected shape. User text and the offline queue
-  are bounded as well.
+  pages, 120 s per run), with the time limit enforced at the blocking call. Responses
+  must be JSON of the expected shape, and nested data is validated and
+  length-limited before it's stored. User text, the saved state (4 MB) and the
+  offline queue are bounded as well.
+- **Rendering.** Text from Toggl (descriptions, project, client, tag and user names)
+  is always shown as plain text, never as rich text or HTML. Notification text is
+  escaped, so shared-workspace data can't inject formatting or make the shell load
+  remote images.
 - **Signing out.** `omarchy-toggl auth logout` removes the token and clears the cache.
 
 Like every Omarchy shell plugin, this runs unsandboxed inside `omarchy-shell`,

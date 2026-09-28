@@ -55,11 +55,18 @@ _CLOCK = re.compile(r"^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$", re.I)
 
 
 def parse_when(text: str, now: datetime | None = None, tz: tzinfo | None = None) -> datetime:
+    try:
+        return _parse_when(text, now, tz)
+    except OverflowError:
+        raise ValueError(f"time out of range: {text}") from None
+
+
+def _parse_when(text: str, now: datetime | None = None, tz: tzinfo | None = None) -> datetime:
     """Parse the human time formats accepted by the DurationField.
 
     Accepts ISO timestamps, ``14:02``, ``2:02pm``, ``-15m``/``+1h`` relative to
     now, and an optional ``today``/``yesterday`` prefix before a clock time.
-    Mirrors ``parseDuration`` in ui/Model.js; the shared cases live in the tests.
+    Mirrors ``parseWhen`` in ui/Model.js; the shared cases live in the tests.
     """
     tz = tz or local_tz()
     now = (now or now_utc()).astimezone(tz)

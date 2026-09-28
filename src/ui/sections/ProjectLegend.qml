@@ -29,6 +29,7 @@ Item {
         opacity: filtered ? 0.35 : 1
 
         Text {
+          textFormat: Text.PlainText
           width: parent.width
           anchors.top: parent.top
           visible: modelData.showLabel

@@ -208,6 +208,7 @@ BarWidget {
         anchors.verticalCenter: parent.verticalCenter
 
         Text {
+          textFormat: Text.PlainText
           id: idleIcon
           text: "󰔛"
           color: button.foreground
@@ -230,6 +231,7 @@ BarWidget {
       }
 
       Text {
+        textFormat: Text.PlainText
         visible: text !== ""
         text: root.pillLabel
         color: button.foreground
@@ -240,6 +242,7 @@ BarWidget {
       }
 
       Text {
+        textFormat: Text.PlainText
         visible: text !== ""
         text: root.running ? root.timeText : (root.idleDisplay === "today-total" && root.svc && root.svc.signedIn ? root.idleText : "")
         color: button.foreground
@@ -261,6 +264,7 @@ BarWidget {
       spacing: Style.spaceReal(1)
 
       Text {
+        textFormat: Text.PlainText
         anchors.horizontalCenter: parent.horizontalCenter
         text: root.running ? "●" : "󰔛"
         color: root.running ? root.dotColor : button.foreground
@@ -268,6 +272,7 @@ BarWidget {
         font.pixelSize: button.fontSize
       }
       Text {
+        textFormat: Text.PlainText
         anchors.horizontalCenter: parent.horizontalCenter
         visible: !!root.running
         text: root.running && root.timerMode !== "hidden" ? String(Math.floor(root.svc.elapsed / 3600)) : ""
@@ -276,6 +281,7 @@ BarWidget {
         font.pixelSize: button.fontSize
       }
       Text {
+        textFormat: Text.PlainText
         anchors.horizontalCenter: parent.horizontalCenter
         visible: !!root.running
         text: root.running && root.timerMode !== "hidden" ? String(Math.floor(root.svc.elapsed % 3600 / 60)).padStart(2, "0") : ""
