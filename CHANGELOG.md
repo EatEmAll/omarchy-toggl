@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The panel's explicit Sync actions (the `r` key, the sync button and the
+  offline Retry banner) now refresh projects, tags and user info too. Those
+  were cached for `META_TTL` (12 h) and only refetched on that timer, so a
+  project created in Toggl stayed invisible in the `@` suggestions for hours.
 - `install-local.sh` no longer uses `rsync --delete`. It installs only into a
   folder it created (tracked by `.omarchy-toggl-install`), refuses any other
   existing folder, and deletes only files it installed earlier. Reported in

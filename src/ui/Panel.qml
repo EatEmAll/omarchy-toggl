@@ -269,7 +269,7 @@ Panel {
         case "e": if (root.view === "list") entriesView.keyEdit(); break
         case "m": if (root.view === "list") entriesView.keyMenu(); break
         case "v": if (root.view === "list") entriesView.keyCheck(); break
-        case "r": if (root.svc) { root.svc.lastPanelSync = Date.now(); root.svc.refresh(true) } break
+        case "r": if (root.svc) { root.svc.lastPanelSync = Date.now(); root.svc.refresh(true, true) } break
         case "c": root.compact = !root.compact; break
         }
       }
@@ -330,7 +330,7 @@ Panel {
               accent: root.accent
               fontFamily: root.fontFamily
               enabledState: !!(root.svc && root.svc.signedIn)
-              onClicked: { root.svc.lastPanelSync = Date.now(); root.svc.refresh(true) }
+              onClicked: { root.svc.lastPanelSync = Date.now(); root.svc.refresh(true, true) }
               RotationAnimator on rotation {
                 running: !!(root.svc && root.svc.busy && root.svc.busyCommand === "sync")
                 from: 0; to: 360; duration: 900; loops: Animation.Infinite
@@ -424,7 +424,7 @@ Panel {
           foreground: root.foreground
           accent: root.accent
           fontFamily: root.fontFamily
-          onAction: root.svc.refresh(true)
+          onAction: root.svc.refresh(true, true)
         }
         Banner {
           width: parent.width
