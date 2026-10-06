@@ -432,7 +432,8 @@ Panel {
           visible: dropped.length > 0
           icon: "󰀦"
           urgent: true
-          text: dropped.length === 1
+          text: dropped.length === 0 ? ""
+            : dropped.length === 1
             ? "An offline change couldn't be applied: " + (dropped[0].description ? "'" + dropped[0].description + "' — " : "") + dropped[0].reason
             : dropped.length + " offline changes couldn't be applied (latest: " + dropped[dropped.length - 1].reason + ")"
           actionText: "Dismiss"

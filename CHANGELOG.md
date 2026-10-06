@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Entry rows: the Continue/Stop and More buttons (and the checkbox) no longer
+  disappear when the pointer is over them.
+- The panel no longer logs a warning when there are no dropped offline changes.
 - `install-local.sh` no longer uses `rsync --delete`. It installs only into a
   folder it created (tracked by `.omarchy-toggl-install`), refuses any other
   existing folder, and deletes only files it installed earlier. Reported in

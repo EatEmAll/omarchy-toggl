@@ -183,7 +183,7 @@ Item {
       readonly property var row: modelData
       readonly property bool isDay: row.kind === "day"
       readonly property bool selected: index === root.selectedIndex
-      readonly property bool hot: selected || rowMouse.containsMouse
+      readonly property bool hot: selected || rowHover.hovered
       readonly property var entry: row.entry || null
       readonly property color tone: entry ? Model.projectColor(entry, Color.muted) : Color.muted
       readonly property var ids: root.idsOf(row)
@@ -257,7 +257,7 @@ Item {
         visible: !rowItem.isDay
         radius: Math.max(Style.cornerRadius, Style.space(6))
         color: rowItem.selected ? Qt.rgba(ctx.accent.r, ctx.accent.g, ctx.accent.b, 0.12)
-          : (rowMouse.containsMouse ? Qt.rgba(ctx.foreground.r, ctx.foreground.g, ctx.foreground.b, 0.055) : "transparent")
+          : (rowHover.hovered ? Qt.rgba(ctx.foreground.r, ctx.foreground.g, ctx.foreground.b, 0.055) : "transparent")
         Behavior on color { ColorAnimation { duration: 90 } }
 
         Rectangle {
@@ -270,10 +270,13 @@ Item {
           color: ctx.accent
         }
 
+        // A HoverHandler stays hovered over the row's own buttons; a MouseArea's
+        // containsMouse drops when a child MouseArea takes the hover, which hid them.
+        HoverHandler { id: rowHover }
+
         MouseArea {
           id: rowMouse
           anchors.fill: parent
-          hoverEnabled: true
           acceptedButtons: Qt.LeftButton | Qt.RightButton
           onClicked: function(mouse) {
             root.selectedIndex = rowItem.index
