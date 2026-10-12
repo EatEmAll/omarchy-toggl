@@ -67,7 +67,7 @@ Rectangle {
     color: root.glyphColor
     font.family: root.fontFamily
     font.pixelSize: Style.font.heading
-    RotationAnimator on rotation {
+    NumberAnimation on rotation {
       running: root.busy
       from: 0; to: 360; duration: 900; loops: Animation.Infinite
       onRunningChanged: if (!running) parent.rotation = 0

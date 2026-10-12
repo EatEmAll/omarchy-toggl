@@ -330,12 +330,8 @@ Panel {
               accent: root.accent
               fontFamily: root.fontFamily
               enabledState: !!(root.svc && root.svc.signedIn)
+              spinning: !!(root.svc && root.svc.busy && root.svc.busyCommand === "sync")
               onClicked: { root.svc.lastPanelSync = Date.now(); root.svc.refresh(true) }
-              RotationAnimator on rotation {
-                running: !!(root.svc && root.svc.busy && root.svc.busyCommand === "sync")
-                from: 0; to: 360; duration: 900; loops: Animation.Infinite
-                onRunningChanged: if (!running) parent.rotation = 0
-              }
             }
             ActionChip {
               anchors.verticalCenter: parent.verticalCenter

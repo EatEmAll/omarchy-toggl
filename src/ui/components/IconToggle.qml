@@ -15,6 +15,8 @@ Rectangle {
   property string fontFamily: Style.font.family
   property real glyphSize: Style.font.body
   property color idleColor: Color.muted
+  // Spins the glyph only; the button's own box (hover tint, outline) stays put.
+  property bool spinning: false
   signal clicked()
 
   implicitWidth: Style.space(26)
@@ -27,7 +29,10 @@ Rectangle {
   border.width: active ? Style.spacing.hairline : 0
   border.color: Qt.rgba(accent.r, accent.g, accent.b, 0.28)
 
+  onSpinningChanged: if (!spinning) glyph.rotation = 0
+
   Text {
+    id: glyph
     textFormat: Text.PlainText
     anchors.centerIn: parent
     text: root.icon
@@ -35,6 +40,10 @@ Rectangle {
     font.family: root.fontFamily
     font.pixelSize: root.glyphSize
     font.bold: true
+    NumberAnimation on rotation {
+      running: root.spinning
+      from: 0; to: 360; duration: 900; loops: Animation.Infinite
+    }
   }
 
   MouseArea {

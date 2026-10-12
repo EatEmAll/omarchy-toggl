@@ -51,7 +51,7 @@ Rectangle {
           font.family: ctx.fontFamily
           font.pixelSize: Style.font.body
           anchors.verticalCenter: parent.verticalCenter
-          RotationAnimator on rotation { running: ctx.rangeLoading; from: 0; to: 360; duration: 900; loops: Animation.Infinite
+          NumberAnimation on rotation { running: ctx.rangeLoading; from: 0; to: 360; duration: 900; loops: Animation.Infinite
             onRunningChanged: if (!running) parent.rotation = 0 }
         }
         Text {

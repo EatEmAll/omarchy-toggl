@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The header's sync button no longer ends up with a tilted outline after syncing:
+  only the glyph spins now, not the whole button.
 - Entry rows: the Continue/Stop and More buttons (and the checkbox) no longer
   disappear when the pointer is over them.
 - The panel no longer logs a warning when there are no dropped offline changes.
