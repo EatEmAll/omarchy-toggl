@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Everything the shell reads from outside is now capped and time-limited:
+  `state.json` / `ui.json` are read with `head -c` under `timeout` (the
+  FileView only watches for changes), the CLI caps its result line (12 MB) and
+  stderr (64 K characters) and the panel rejects anything larger, and paste
+  kills a stuck `wl-paste` after 2 s.
 - No Qt text input is used at all. Qt keeps every text field's paste state in
   sync with the system clipboard and reads foreign text with no size or time
   limit. Text entry is now `components/PlainField.qml`, which draws its own text

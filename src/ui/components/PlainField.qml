@@ -103,11 +103,12 @@ FocusScope {
 
   Process {
     id: pasteProc
-    command: ["sh", "-c", "timeout 2 wl-paste --no-newline --type text 2>/dev/null | head -c " + Logic.MAX_PASTE]
+    command: ["sh", "-c", "timeout -k 1 2 wl-paste --no-newline --type text 2>/dev/null | head -c " + Logic.MAX_PASTE]
     stdout: StdioCollector {
       onStreamFinished: {
         if (!root.activeFocus) return
-        root._set(Logic.insert(root._state(), text, root.maxLength, root.digitsOnly))
+        // head -c may cut a multi-byte character; drop the partial one
+        root._set(Logic.insert(root._state(), text.replace(/\uFFFD$/, ""), root.maxLength, root.digitsOnly))
       }
     }
   }

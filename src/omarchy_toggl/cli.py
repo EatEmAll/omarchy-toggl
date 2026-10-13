@@ -26,13 +26,19 @@ from .timeutil import parse_when, parse_iso, now_utc, to_api
 from .token import MAX_TOKEN, TokenError, clear_token, get_token, set_token, token_file
 
 EXIT = {"usage": 2, "auth": 3, "quota": 4, "net": 5, "rate": 4}
+# The shell reads this output whole; state.json is kept under 4 MB, so a
+# result line never legitimately comes near this.
+MAX_OUTPUT = 12 * 1024 * 1024
 
 
 def _emit(payload: dict[str, Any], text: str | None, as_text: bool) -> None:
     if as_text:
         print(text if text is not None else json.dumps(payload))
     else:
-        sys.stdout.write(json.dumps(payload, separators=(",", ":"), ensure_ascii=False) + "\n")
+        line = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+        if len(line.encode("utf-8", "surrogatepass")) > MAX_OUTPUT:
+            line = json.dumps({"ok": False, "error": {"kind": "backend", "message": "result too large"}})
+        sys.stdout.write(line + "\n")
     sys.stdout.flush()
 
 

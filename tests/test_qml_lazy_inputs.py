@@ -33,7 +33,7 @@ class LazyInputs(unittest.TestCase):
 
     def test_paste_is_bounded(self):
         field = src("components/PlainField.qml")
-        self.assertIn("timeout 2 wl-paste", field)
+        self.assertIn("timeout -k 1 2 wl-paste", field)
         self.assertIn("head -c", field)
         self.assertNotRegex(field, r"Clipboard|clipboard\.")
 
@@ -60,6 +60,33 @@ class LazyInputs(unittest.TestCase):
         self.assertRegex(picker, r"contentItem:\s*Loader\s*\{[\s\S]*?active:\s*root\.visible")
         head = picker.split("contentItem:")[0]
         self.assertIsNone(FIELD.search(head))
+
+
+class BoundedShellReads(unittest.TestCase):
+    """Everything the shell process reads from outside is capped and time-limited."""
+
+    def test_file_views_only_watch(self):
+        for qml in UI.parent.rglob("*.qml"):
+            text = qml.read_text()
+            for m in re.finditer(r"FileView\s*\{(.*?)\n\s*\}", text, re.S):
+                self.assertRegex(m.group(1), r"preload:\s*false", f"{qml}: FileView must not read")
+                self.assertNotRegex(m.group(1), r"(?<!root\.)reload\(\)|text\(\)|data\(\)", str(qml))
+        self.assertNotRegex((UI.parent / "Service.qml").read_text(), r"\bFileView\s*\{")
+
+    def test_cache_reads_are_capped_and_timed(self):
+        bounded = src("BoundedFile.qml")
+        self.assertIn('"timeout", "-k", "1", "5", "head", "-c"', bounded)
+        self.assertRegex(bounded, r"bytes <= root\.maxBytes")
+
+    def test_backend_output_is_capped(self):
+        backend = src("Backend.qml")
+        self.assertRegex(backend, r"var oversized = ")
+        self.assertRegex(backend, r"raw = oversized \? \"\"")
+
+    def test_only_known_processes_read_output(self):
+        readers = sorted(str(q.relative_to(UI.parent)) for q in UI.parent.rglob("*.qml")
+                         if "StdioCollector" in q.read_text())
+        self.assertEqual(readers, ["ui/Backend.qml", "ui/BoundedFile.qml", "ui/components/PlainField.qml"])
 
 
 if __name__ == "__main__":

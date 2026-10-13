@@ -49,20 +49,27 @@ Item {
     watchdog.restart()
   }
 
+  // Output caps the CLI enforces itself (cli.MAX_OUTPUT, capped stderr);
+  // anything larger is treated as a failed run rather than parsed.
+  readonly property int maxOut: 12 * 1024 * 1024 + 1024
+  readonly property int maxErr: 4 * 64 * 1024 + 1024    // 64 K characters of UTF-8
+
   function finish() {
     if (!collector.exited || !collector.outDone || !collector.errDone || !current) return
     watchdog.stop()
     var job = current
-    var raw = String(out.text || "").trim()
+    var oversized = (out.data ? out.data.byteLength : 0) > root.maxOut || (errOut.data ? errOut.data.byteLength : 0) > root.maxErr
+    var raw = oversized ? "" : String(out.text || "").trim()
     var lines = raw.split("\n")
     var result = null
     try {
       result = JSON.parse(lines[lines.length - 1])
     } catch (e) {
-      var err = String(errOut.text || "").trim().split("\n")
-      result = { ok: false, error: { kind: "backend", message: root.timedOut ? "The backend took too long and was stopped"
+      var err = oversized ? [] : String(errOut.text || "").trim().split("\n")
+      result = { ok: false, error: { kind: "backend", message: oversized ? "The backend returned too much output"
+                                     : root.timedOut ? "The backend took too long and was stopped"
                                      : (err[err.length - 1] || ("backend exited with " + collector.code)),
-                                     details: String(errOut.text || "") } }
+                                     details: oversized ? "" : String(errOut.text || "") } }
     }
     var ok = !!(result && result.ok)
     current = null

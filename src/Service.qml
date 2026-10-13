@@ -251,22 +251,23 @@ Item {
     cliPath: root.cliPath
   }
 
-  FileView {
+  // Both files are written only by our CLI (state.json is kept under 4 MB);
+  // reads are still capped and time-limited (see ui/BoundedFile.qml).
+  BoundedFile {
     id: stateFile
     path: root.cacheDir + "/state.json"
-    watchChanges: true
-    printErrors: false
-    onFileChanged: reload()
-    onLoaded: root.snapshot = Model.parseState(text())
+    onLoaded: function(text) { root.snapshot = Model.parseState(text) }
     onLoadFailed: root.snapshot = Model.emptyState()
   }
 
-  FileView {
+  BoundedFile {
     id: uiFile
     path: root.cacheDir + "/ui.json"
-    printErrors: false
-    onLoaded: {
-      try { root.ui = JSON.parse(text()) || {} } catch (e) { root.ui = {} }
+    maxBytes: 256 * 1024
+    watch: false
+    onLoadFailed: root.ui = {}
+    onLoaded: function(text) {
+      try { root.ui = JSON.parse(text) || {} } catch (e) { root.ui = {} }
       var since = Number(root.ui.idleSince || 0)
       var entry = root.ui.idleEntry
       if (since > 0) Qt.callLater(function() {
