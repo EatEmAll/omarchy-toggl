@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- No text input exists while the panel is closed. The panel content is created
+  when the popup opens and destroyed after it closes; the settings view, the
+  entry editor and the picker lists are created only while shown. Qt keeps every
+  text field's paste state in sync with the clipboard, so the always-loaded bar
+  widget no longer hosts fields that read it. Reported in marketplace review.
 - The header's sync button no longer ends up with a tilted outline after syncing:
   only the glyph spins now, not the whole button.
 - Entry rows: the Continue/Stop and More buttons (and the checkbox) no longer

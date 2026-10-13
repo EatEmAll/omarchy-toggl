@@ -24,7 +24,7 @@ Popup {
   signal changedValues(var values)
 
   width: Style.space(250)
-  height: Math.min(Style.space(320), search.height + Math.max(1, filtered.length) * Style.space(28) + Style.spacing.lg * 3)
+  height: Math.min(Style.space(320), (searchField ? searchField.height : Style.spacing.controlHeight) + Math.max(1, filtered.length) * Style.space(28) + Style.spacing.lg * 3)
   padding: Style.spacing.md
   focus: true
   modal: false
@@ -36,17 +36,22 @@ Popup {
     radius: Style.cornerRadius
   }
 
+  // The list and its search field exist only while the popup is showing, so
+  // no text input is alive (or reading the clipboard) while it is closed.
+  readonly property var searchField: body.item ? body.item.searchItem : null
+  readonly property var listField: body.item ? body.item.listItem : null
+
   function refilter() {
-    var q = search.text.trim().toLowerCase()
+    var q = searchField ? searchField.text.trim().toLowerCase() : ""
     var out = []
     for (var i = 0; i < root.items.length; i++) {
       var it = root.items[i]
       if (!q || String(it.label).toLowerCase().indexOf(q) !== -1) out.push(it)
     }
     if (root.multi && q && !out.some(function(it) { return String(it.label).toLowerCase() === q }))
-      out.push({ value: search.text.trim(), label: search.text.trim(), detail: "new tag", create: true })
+      out.push({ value: searchField.text.trim(), label: searchField.text.trim(), detail: "new tag", create: true })
     root.filtered = out
-    list.currentIndex = out.length ? 0 : -1
+    if (listField) listField.currentIndex = out.length ? 0 : -1
   }
 
   function isChecked(v) { return root.values.indexOf(v) !== -1 }
@@ -61,7 +66,7 @@ Popup {
       else next.splice(at, 1)
       root.values = next
       root.changedValues(next)
-      if (it.create) { search.text = ""; }
+      if (it.create && searchField) searchField.text = ""
     } else {
       root.picked(String(it.value))
       root.close()
@@ -70,108 +75,118 @@ Popup {
 
   onItemsChanged: refilter()
   onOpened: {
-    search.text = ""
+    if (searchField) searchField.text = ""
     refilter()
-    search.forceActiveFocus()
+    if (searchField) searchField.forceActiveFocus()
   }
 
-  contentItem: Column {
-    spacing: Style.spacing.md
+  contentItem: Loader {
+    id: body
+    active: root.visible
+    sourceComponent: Component {
+      Column {
+        id: column
+        width: body.width
+        spacing: Style.spacing.md
+        readonly property var searchItem: search
+        readonly property var listItem: list
 
-    Ui.TextField {
-      id: search
-      width: parent.width
-      placeholderText: root.placeholder
-      foreground: root.foreground
-      accent: root.accent
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.bodySmall
-      onTextChanged: root.refilter()
-      Keys.onPressed: function(event) {
-        if (event.key === Qt.Key_Down) { list.incrementCurrentIndex(); event.accepted = true }
-        else if (event.key === Qt.Key_Up) { list.decrementCurrentIndex(); event.accepted = true }
-        else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.activate(list.currentIndex); event.accepted = true }
-        else if (event.key === Qt.Key_Escape) { root.close(); event.accepted = true }
-      }
-    }
+        Ui.TextField {
+          id: search
+          width: parent.width
+          placeholderText: root.placeholder
+          foreground: root.foreground
+          accent: root.accent
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.bodySmall
+          onTextChanged: root.refilter()
+          Keys.onPressed: function(event) {
+            if (event.key === Qt.Key_Down) { list.incrementCurrentIndex(); event.accepted = true }
+            else if (event.key === Qt.Key_Up) { list.decrementCurrentIndex(); event.accepted = true }
+            else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.activate(list.currentIndex); event.accepted = true }
+            else if (event.key === Qt.Key_Escape) { root.close(); event.accepted = true }
+          }
+        }
 
-    ListView {
-      id: list
-      width: parent.width
-      height: root.availableHeight - search.height - parent.spacing
-      clip: true
-      model: root.filtered
-      boundsBehavior: Flickable.StopAtBounds
-      highlightMoveDuration: 0
-      ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        ListView {
+          id: list
+          width: parent.width
+          height: root.availableHeight - search.height - parent.spacing
+          clip: true
+          model: root.filtered
+          boundsBehavior: Flickable.StopAtBounds
+          highlightMoveDuration: 0
+          ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-      delegate: Rectangle {
-        required property var modelData
-        required property int index
-        width: ListView.view.width
-        height: Style.space(28)
-        radius: Math.max(Style.cornerRadius, Style.space(5))
-        color: ListView.isCurrentItem ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.14)
-          : (rowMouse.containsMouse ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06) : "transparent")
+          delegate: Rectangle {
+            required property var modelData
+            required property int index
+            width: ListView.view.width
+            height: Style.space(28)
+            radius: Math.max(Style.cornerRadius, Style.space(5))
+            color: ListView.isCurrentItem ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.14)
+              : (rowMouse.containsMouse ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.06) : "transparent")
 
-        Row {
-          anchors.fill: parent
-          anchors.leftMargin: Style.spacing.lg
-          anchors.rightMargin: Style.spacing.lg
-          spacing: Style.spacing.lg
+            Row {
+              anchors.fill: parent
+              anchors.leftMargin: Style.spacing.lg
+              anchors.rightMargin: Style.spacing.lg
+              spacing: Style.spacing.lg
+
+              Text {
+                textFormat: Text.PlainText
+                visible: root.multi
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.isChecked(modelData.value) ? "󰄵" : "󰄱"
+                color: root.isChecked(modelData.value) ? root.accent : Color.muted
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+              }
+              ProjectDot {
+                visible: !root.multi
+                anchors.verticalCenter: parent.verticalCenter
+                dotColor: modelData.color ? modelData.color : Color.muted
+              }
+              Text {
+                textFormat: Text.PlainText
+                anchors.verticalCenter: parent.verticalCenter
+                width: parent.width - Style.space(90)
+                text: modelData.label
+                color: !root.multi && modelData.color ? modelData.color : root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.bodySmall
+                font.bold: !root.multi && String(modelData.value) === String(root.value)
+                elide: Text.ElideRight
+              }
+              Text {
+                textFormat: Text.PlainText
+                anchors.verticalCenter: parent.verticalCenter
+                text: modelData.detail || ""
+                color: Color.muted
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+              }
+            }
+
+            MouseArea {
+              id: rowMouse
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.activate(index)
+            }
+          }
 
           Text {
             textFormat: Text.PlainText
-            visible: root.multi
-            anchors.verticalCenter: parent.verticalCenter
-            text: root.isChecked(modelData.value) ? "󰄵" : "󰄱"
-            color: root.isChecked(modelData.value) ? root.accent : Color.muted
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.body
-          }
-          ProjectDot {
-            visible: !root.multi
-            anchors.verticalCenter: parent.verticalCenter
-            dotColor: modelData.color ? modelData.color : Color.muted
-          }
-          Text {
-            textFormat: Text.PlainText
-            anchors.verticalCenter: parent.verticalCenter
-            width: parent.width - Style.space(90)
-            text: modelData.label
-            color: !root.multi && modelData.color ? modelData.color : root.foreground
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.bodySmall
-            font.bold: !root.multi && String(modelData.value) === String(root.value)
-            elide: Text.ElideRight
-          }
-          Text {
-            textFormat: Text.PlainText
-            anchors.verticalCenter: parent.verticalCenter
-            text: modelData.detail || ""
+            visible: root.filtered.length === 0
+            anchors.centerIn: parent
+            text: root.emptyText
             color: Color.muted
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
           }
         }
-
-        MouseArea {
-          id: rowMouse
-          anchors.fill: parent
-          hoverEnabled: true
-          cursorShape: Qt.PointingHandCursor
-          onClicked: root.activate(index)
-        }
-      }
-
-      Text {
-        textFormat: Text.PlainText
-        visible: root.filtered.length === 0
-        anchors.centerIn: parent
-        text: root.emptyText
-        color: Color.muted
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
       }
     }
   }

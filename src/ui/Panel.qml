@@ -55,7 +55,18 @@ Panel {
     groupSimilar: svc ? Model.flag(svc.opt("groupSimilar")) : true, expanded: expanded
   }, buildNow)
   readonly property bool bodyReady: !!(svc && (snapshot.lastSyncAt || !svc.signedIn)) && pool.covered
-  readonly property bool textEditing: timerBar.editing || entriesView.searching || settingsView.editingText || editor.visible
+  // The panel's content (and every text input in it) exists only while the
+  // popup is showing; settings and the entry editor are created on demand.
+  // Nothing outside the content may assume these are present.
+  readonly property var content: contentLoader.item
+  readonly property var timerBarRef: content ? content.timerBarItem : null
+  readonly property var entriesRef: content ? content.entriesItem : null
+  readonly property var calendarRef: content ? content.calendarItem : null
+  readonly property var timesheetRef: content ? content.timesheetItem : null
+  readonly property var settingsRef: content ? content.settingsItem : null
+  readonly property var editorRef: content && content.editorHost ? content.editorHost.item : null
+  readonly property bool textEditing: !!((timerBarRef && timerBarRef.editing) || (entriesRef && entriesRef.searching)
+    || (settingsRef && settingsRef.editingText) || (editorRef && editorRef.visible))
 
   // Panel contract -----------------------------------------------------------
   function open() { root.controller.show() }
@@ -69,8 +80,10 @@ Panel {
   }
 
   function focusCatcher() { Qt.callLater(function() { keyCatcher.forceActiveFocus() }) }
+  function focusTimerBar() { if (timerBarRef) timerBarRef.focusInput() }
+  function focusSettingsToken() { Qt.callLater(function() { if (settingsRef) settingsRef.focusToken() }) }
   function requestTimerFocus() {
-    if (root.opened) Qt.callLater(function() { timerBar.focusInput() })
+    if (root.opened) Qt.callLater(root.focusTimerBar)
   }
 
   // Navigation -----------------------------------------------------------------
@@ -117,11 +130,17 @@ Panel {
   }
 
   // Dialogs ----------------------------------------------------------------------
-  function openEditor(entry) {
-    if (!entry || !entry.stop) { timerBar.focusInput(); return }
-    editor.openFor(entry)
+  function withEditor(fn) {
+    var host = content ? content.editorHost : null
+    if (!host) return
+    host.active = true
+    if (host.item) fn(host.item)
   }
-  function openCreator(fromMs, toMs) { editor.openCreate(fromMs, toMs) }
+  function openEditor(entry) {
+    if (!entry || !entry.stop) { focusTimerBar(); return }
+    withEditor(function(ed) { ed.openFor(entry) })
+  }
+  function openCreator(fromMs, toMs) { withEditor(function(ed) { ed.openCreate(fromMs, toMs) }) }
   function askConfirm(message, ids) {
     root.confirm = { message: message, ids: ids }
     focusCatcher()
@@ -168,11 +187,11 @@ Panel {
       var pending = svc ? svc.consumeView() : ""
       if (pending) showView(pending)
       if (svc && svc.consumeQuickFocus()) requestTimerFocus()
-      else if (svc && !svc.signedIn) { showSettings = true; Qt.callLater(function() { settingsView.focusToken() }) }
+      else if (svc && !svc.signedIn) { showSettings = true; focusSettingsToken() }
       else focusCatcher()
     } else {
       confirm = null
-      if (editor.visible) editor.close()
+      if (editorRef && editorRef.visible) editorRef.close()
     }
   }
   onSvcChanged: if (svc && svc.ui && svc.ui.lastView && !svc.opt("defaultView")) view = svc.ui.lastView
@@ -224,15 +243,16 @@ Panel {
       }
       onMoveRequested: function(dx, dy) {
         if (root.showSettings) {
-          if (dy !== 0) settingsView.flick(0, -dy * 900)
+          if (dy !== 0 && settingsRef) settingsRef.flick(0, -dy * 900)
           return
         }
         if (root.view === "list") {
-          if (dy !== 0) entriesView.move(dy)
-          else entriesView.keyExpand(dx > 0)
+          if (!root.entriesRef) return
+          if (dy !== 0) root.entriesRef.move(dy)
+          else root.entriesRef.keyExpand(dx > 0)
         } else if (dy !== 0) {
-          var f = root.view === "calendar" ? calendarView : timesheetView
-          f.contentY = Math.max(0, Math.min(f.contentHeight - f.height, f.contentY + dy * Style.space(48)))
+          var f = root.view === "calendar" ? root.calendarRef : root.timesheetRef
+          if (f) f.contentY = Math.max(0, Math.min(f.contentHeight - f.height, f.contentY + dy * Style.space(48)))
         } else {
           root.stepRange(dx)
         }
@@ -243,11 +263,11 @@ Panel {
         root.enterPressed = false
         if (root.confirm) { if (enter) root.runConfirm(); return }
         if (!root.svc || !root.svc.signedIn) return
-        if (enter && root.view === "list" && !root.showSettings && entriesView.selectedRow) entriesView.keyActivate()
-        else if (enter) timerBar.focusInput()
+        if (enter && root.view === "list" && !root.showSettings && root.entriesRef && root.entriesRef.selectedRow) root.entriesRef.keyActivate()
+        else if (enter) root.focusTimerBar()
         else root.svc.toggle()
       }
-      onDeleteRequested: if (root.view === "list" && !root.showSettings) entriesView.keyDelete()
+      onDeleteRequested: if (root.view === "list" && !root.showSettings && root.entriesRef) root.entriesRef.keyDelete()
       onTextKey: function(text) {
         if (root.svc && root.svc.idlePrompt) {
           if (text === "d") root.svc.resolveIdle("discard-continue")
@@ -255,7 +275,7 @@ Panel {
           return
         }
         switch (text) {
-        case "/": case "n": timerBar.focusInput(); break
+        case "/": case "n": root.focusTimerBar(); break
         case "s": if (root.svc && root.svc.running) root.svc.stop(); break
         case "1": root.setView("calendar"); break
         case "2": root.setView("list"); break
@@ -265,343 +285,370 @@ Panel {
         case "]": root.stepRange(1); break
         case "t": root.pickRange(root.view === "timesheet" ? "week" : "today"); break
         case "a": root.pickRange("all"); break
-        case "f": if (root.view !== "list") root.setView("list"); entriesView.focusSearch(); break
-        case "e": if (root.view === "list") entriesView.keyEdit(); break
-        case "m": if (root.view === "list") entriesView.keyMenu(); break
-        case "v": if (root.view === "list") entriesView.keyCheck(); break
+        case "f": if (root.view !== "list") root.setView("list"); if (root.entriesRef) root.entriesRef.focusSearch(); break
+        case "e": if (root.view === "list" && root.entriesRef) root.entriesRef.keyEdit(); break
+        case "m": if (root.view === "list" && root.entriesRef) root.entriesRef.keyMenu(); break
+        case "v": if (root.view === "list" && root.entriesRef) root.entriesRef.keyCheck(); break
         case "r": if (root.svc) { root.svc.lastPanelSync = Date.now(); root.svc.refresh(true) } break
         case "c": root.compact = !root.compact; break
         }
       }
 
-      Column {
-        id: layout
+      // Created when the popup maps and destroyed after it fades out, so no
+      // text field exists (or reads the clipboard) while the panel is closed.
+      Loader {
+        id: contentLoader
         anchors.fill: parent
-        spacing: Style.spacing.lg
-
-        // Slim header (stands in for the web app's logo bar) ------------------
-        Item {
-          width: parent.width
-          height: Style.space(28)
-
-          Row {
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: Style.spacing.md
-            width: parent.width - headerActions.width - Style.spacing.md
-            Text {
-              textFormat: Text.PlainText
-              anchors.verticalCenter: parent.verticalCenter
-              text: "󱎫"
-              color: root.svc && root.svc.running ? Model.projectColor(root.svc.running, root.accent) : root.accent
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.heading
-            }
-            Text {
-              textFormat: Text.PlainText
-              anchors.verticalCenter: parent.verticalCenter
-              text: "Toggl Track"
-              color: root.foreground
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.title
-              font.bold: true
-            }
-            Text {
-              textFormat: Text.PlainText
-              anchors.verticalCenter: parent.verticalCenter
-              width: parent.width - Style.space(130)
-              text: root.subtitle()
-              color: root.svc && root.snapshot.error && root.snapshot.error.kind === "quota" ? Color.urgent : Color.muted
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              elide: Text.ElideRight
-            }
-          }
-          Row {
-            id: headerActions
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: Style.spacing.sm
-            IconToggle {
-              anchors.verticalCenter: parent.verticalCenter
-              icon: "󰑓"
-              tooltip: "Sync now  r"
-              foreground: root.foreground
-              accent: root.accent
-              fontFamily: root.fontFamily
-              enabledState: !!(root.svc && root.svc.signedIn)
-              spinning: !!(root.svc && root.svc.busy && root.svc.busyCommand === "sync")
-              onClicked: { root.svc.lastPanelSync = Date.now(); root.svc.refresh(true) }
-            }
-            ActionChip {
-              anchors.verticalCenter: parent.verticalCenter
-              text: "Esc"
-              icon: "󰅖"
-              foreground: root.foreground
-              accent: root.accent
-              fontFamily: root.fontFamily
-              onClicked: root.close()
-            }
-          }
-        }
-
-        TimerBar {
-          id: timerBar
-          ctx: root
-          width: parent.width
-          z: 10
-        }
-
-        IdlePrompt {
-          ctx: root
-          width: parent.width
-          z: 9
-        }
-
-        SummaryRow {
-          ctx: root
-          visible: !root.compact
-          width: parent.width
-        }
-
-        DateNav {
-          ctx: root
-          visible: !root.compact && !root.showSettings
-          width: Style.space(250)
-        }
-
-        ViewSwitch {
-          ctx: root
-          width: parent.width
-        }
-
-        ProjectLegend {
-          ctx: root
-          visible: !root.compact && !root.showSettings && segments.length > 0
-          width: parent.width
-          segments: root.legendSegments
-        }
-
-        Row {
-          visible: root.projectFilter !== "" && !root.showSettings
-          spacing: Style.spacing.md
-          ActionChip {
-            text: {
-              var seg = root.legendSegments.filter(function(s) { return s.key === root.projectFilter })[0]
-              return (seg ? seg.name : "Project") + "  ×"
-            }
-            icon: "●"
-            selected: true
-            foreground: root.foreground
-            accent: root.accent
-            fontFamily: root.fontFamily
-            onClicked: root.projectFilter = ""
-          }
-        }
-
-        // Banners ----------------------------------------------------------
-        Banner {
-          width: parent.width
-          visible: !!(root.svc && root.snapshot.error && root.snapshot.error.kind === "quota")
-          icon: "󰔟"
-          urgent: true
-          text: "Showing cached data · API limit resets in " + (root.snapshot.error ? Model.resetsIn(root.snapshot.error.resetsAt, root.svc ? root.svc.now : Date.now()) : "")
-          foreground: root.foreground
-          accent: root.accent
-          fontFamily: root.fontFamily
-        }
-        Banner {
-          width: parent.width
-          visible: !!(root.svc && (root.svc.pendingCount > 0 || (root.snapshot.error && root.snapshot.error.kind === "net")))
-          icon: "󰖪"
-          text: root.svc && root.svc.pendingCount > 0 ? "Offline · " + root.svc.pendingCount + " change" + (root.svc.pendingCount === 1 ? "" : "s") + " queued"
-            : "Offline · showing cached data"
-          actionText: "Retry"
-          foreground: root.foreground
-          accent: root.accent
-          fontFamily: root.fontFamily
-          onAction: root.svc.refresh(true)
-        }
-        Banner {
-          width: parent.width
-          readonly property var dropped: root.snapshot && root.snapshot.dropped ? root.snapshot.dropped : []
-          visible: dropped.length > 0
-          icon: "󰀦"
-          urgent: true
-          text: dropped.length === 0 ? ""
-            : dropped.length === 1
-            ? "An offline change couldn't be applied: " + (dropped[0].description ? "'" + dropped[0].description + "' — " : "") + dropped[0].reason
-            : dropped.length + " offline changes couldn't be applied (latest: " + dropped[dropped.length - 1].reason + ")"
-          actionText: "Dismiss"
-          foreground: root.foreground
-          accent: root.accent
-          fontFamily: root.fontFamily
-          onAction: root.svc.dismissDropped()
-        }
-        Banner {
-          width: parent.width
-          visible: !!(root.svc && root.svc.lastError)
-          icon: "󰀦"
-          urgent: true
-          text: root.svc && root.svc.lastError
-            ? root.svc.lastError.message + (root.svc.lastError.candidates && root.svc.lastError.candidates.length ? " — " + root.svc.lastError.candidates.join(", ") : "")
-            : ""
-          actionText: root.svc && root.svc.lastError && root.svc.lastError.details ? "Copy details" : "Dismiss"
-          foreground: root.foreground
-          accent: root.accent
-          fontFamily: root.fontFamily
-          onAction: {
-            if (root.svc.lastError.details) Util.execArgv(["wl-copy", "--", root.svc.lastError.details])
-            root.svc.lastError = null
-          }
-        }
-
-        // Body -------------------------------------------------------------
-        Item {
-          id: bodyArea
-          width: parent.width
-          height: Math.max(0, layout.height - y)
-
-          EntriesView {
-            id: entriesView
-            ctx: root
-            anchors.fill: parent
-            anchors.bottomMargin: bottomBar.visible ? bottomBar.height + Style.spacing.md : 0
-            visible: root.view === "list" && !root.showSettings && root.svc && root.svc.signedIn
-          }
-          TimesheetView {
-            id: timesheetView
-            ctx: root
-            anchors.fill: parent
-            visible: root.view === "timesheet" && !root.showSettings && root.svc && root.svc.signedIn
-          }
-          CalendarView {
-            id: calendarView
-            ctx: root
-            anchors.fill: parent
-            visible: root.view === "calendar" && !root.showSettings && root.svc && root.svc.signedIn
-          }
-          SettingsView {
-            id: settingsView
-            ctx: root
-            anchors.fill: parent
-            visible: root.showSettings
-          }
-
-          EmptyState {
-            visible: !root.showSettings && !!root.svc && !root.svc.signedIn
-            anchors.centerIn: parent
-            width: parent.width - Style.space(40)
-            icon: "󰌾"
-            title: "Connect Toggl Track"
-            detail: "Paste your API token in Settings (⚙). It stays in your keyring."
-            foreground: root.foreground
-            accent: root.accent
-            fontFamily: root.fontFamily
-          }
-          ActionChip {
-            visible: !root.showSettings && !!root.svc && !root.svc.signedIn
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.top: parent.verticalCenter
-            anchors.topMargin: Style.space(70)
-            text: "Open Settings"
-            icon: "󰒓"
-            selected: true
-            foreground: root.foreground
-            accent: root.accent
-            fontFamily: root.fontFamily
-            onClicked: { root.toggleSettings(true); settingsView.focusToken() }
-          }
-
-          // Loading placeholder while a range beyond the cache is fetched.
+        active: panel.visible
+        sourceComponent: Component {
           Column {
-            visible: !root.pool.covered && !root.showSettings
+            id: layout
             anchors.fill: parent
-            anchors.topMargin: Style.spacing.xl
-            spacing: Style.spacing.md
-            Repeater {
-              model: 6
-              delegate: Rectangle {
-                width: bodyArea.width
-                height: Style.space(44)
-                radius: Math.max(Style.cornerRadius, Style.space(6))
-                color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.05)
-              }
-            }
-          }
+            spacing: Style.spacing.lg
 
-          // Confirm strip / bulk selection bar -------------------------------
-          Item {
-            id: bottomBar
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            visible: !root.showSettings && (!!root.confirm || entriesView.checkedCount > 0)
-            height: root.confirm ? confirmStrip.implicitHeight : bulk.height
+            // Handles for the panel-level key handling (see root.*Ref).
+            readonly property var timerBarItem: timerBar
+            readonly property var entriesItem: entriesView
+            readonly property var calendarItem: calendarView
+            readonly property var timesheetItem: timesheetView
+            readonly property var settingsItem: settingsLoader.item
+            readonly property var editorHost: editorLoader
 
-            ConfirmStrip {
-              id: confirmStrip
-              visible: !!root.confirm
+            // Slim header (stands in for the web app's logo bar) ------------------
+            Item {
               width: parent.width
-              message: root.confirm ? root.confirm.message : ""
-              foreground: root.foreground
-              accent: root.accent
-              fontFamily: root.fontFamily
-              onConfirmed: root.runConfirm()
-              onCanceled: { root.confirm = null; root.focusCatcher() }
-            }
-            Rectangle {
-              id: bulk
-              visible: !root.confirm
-              width: parent.width
-              height: Style.space(42)
-              radius: Math.max(Style.cornerRadius, Style.space(8))
-              color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.10)
-              border.width: Style.spacing.hairline
-              border.color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.28)
-              Text {
-                textFormat: Text.PlainText
-                anchors.left: parent.left
-                anchors.leftMargin: Style.spacing.xl
-                anchors.verticalCenter: parent.verticalCenter
-                text: entriesView.checkedCount + " selected"
-                color: root.foreground
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.bodySmall
-                font.bold: true
-              }
+              height: Style.space(28)
+
               Row {
-                anchors.right: parent.right
-                anchors.rightMargin: Style.spacing.md
+                anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: Style.spacing.md
-                ActionChip {
-                  text: "Delete"
-                  icon: "󰆴"
-                  destructive: true
+                width: parent.width - headerActions.width - Style.spacing.md
+                Text {
+                  textFormat: Text.PlainText
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: "󱎫"
+                  color: root.svc && root.svc.running ? Model.projectColor(root.svc.running, root.accent) : root.accent
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.heading
+                }
+                Text {
+                  textFormat: Text.PlainText
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: "Toggl Track"
+                  color: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.title
+                  font.bold: true
+                }
+                Text {
+                  textFormat: Text.PlainText
+                  anchors.verticalCenter: parent.verticalCenter
+                  width: parent.width - Style.space(130)
+                  text: root.subtitle()
+                  color: root.svc && root.snapshot.error && root.snapshot.error.kind === "quota" ? Color.urgent : Color.muted
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  elide: Text.ElideRight
+                }
+              }
+              Row {
+                id: headerActions
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: Style.spacing.sm
+                IconToggle {
+                  anchors.verticalCenter: parent.verticalCenter
+                  icon: "󰑓"
+                  tooltip: "Sync now  r"
                   foreground: root.foreground
                   accent: root.accent
                   fontFamily: root.fontFamily
-                  onClicked: root.askConfirm("Delete " + entriesView.checkedCount + " selected entries?", Object.keys(root.checked))
+                  enabledState: !!(root.svc && root.svc.signedIn)
+                  spinning: !!(root.svc && root.svc.busy && root.svc.busyCommand === "sync")
+                  onClicked: { root.svc.lastPanelSync = Date.now(); root.svc.refresh(true) }
                 }
                 ActionChip {
-                  text: "Cancel"
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: "Esc"
+                  icon: "󰅖"
                   foreground: root.foreground
                   accent: root.accent
                   fontFamily: root.fontFamily
-                  onClicked: root.checked = ({})
+                  onClicked: root.close()
                 }
               }
             }
-          }
 
-          EntryEditor {
-            id: editor
-            ctx: root
-            width: parent.width
-            anchors.top: parent.top
-            z: 20
-            onClosed: root.focusCatcher()
+            TimerBar {
+              id: timerBar
+              ctx: root
+              width: parent.width
+              z: 10
+            }
+
+            IdlePrompt {
+              ctx: root
+              width: parent.width
+              z: 9
+            }
+
+            SummaryRow {
+              ctx: root
+              visible: !root.compact
+              width: parent.width
+            }
+
+            DateNav {
+              ctx: root
+              visible: !root.compact && !root.showSettings
+              width: Style.space(250)
+            }
+
+            ViewSwitch {
+              ctx: root
+              width: parent.width
+            }
+
+            ProjectLegend {
+              ctx: root
+              visible: !root.compact && !root.showSettings && segments.length > 0
+              width: parent.width
+              segments: root.legendSegments
+            }
+
+            Row {
+              visible: root.projectFilter !== "" && !root.showSettings
+              spacing: Style.spacing.md
+              ActionChip {
+                text: {
+                  var seg = root.legendSegments.filter(function(s) { return s.key === root.projectFilter })[0]
+                  return (seg ? seg.name : "Project") + "  ×"
+                }
+                icon: "●"
+                selected: true
+                foreground: root.foreground
+                accent: root.accent
+                fontFamily: root.fontFamily
+                onClicked: root.projectFilter = ""
+              }
+            }
+
+            // Banners ----------------------------------------------------------
+            Banner {
+              width: parent.width
+              visible: !!(root.svc && root.snapshot.error && root.snapshot.error.kind === "quota")
+              icon: "󰔟"
+              urgent: true
+              text: "Showing cached data · API limit resets in " + (root.snapshot.error ? Model.resetsIn(root.snapshot.error.resetsAt, root.svc ? root.svc.now : Date.now()) : "")
+              foreground: root.foreground
+              accent: root.accent
+              fontFamily: root.fontFamily
+            }
+            Banner {
+              width: parent.width
+              visible: !!(root.svc && (root.svc.pendingCount > 0 || (root.snapshot.error && root.snapshot.error.kind === "net")))
+              icon: "󰖪"
+              text: root.svc && root.svc.pendingCount > 0 ? "Offline · " + root.svc.pendingCount + " change" + (root.svc.pendingCount === 1 ? "" : "s") + " queued"
+                : "Offline · showing cached data"
+              actionText: "Retry"
+              foreground: root.foreground
+              accent: root.accent
+              fontFamily: root.fontFamily
+              onAction: root.svc.refresh(true)
+            }
+            Banner {
+              width: parent.width
+              readonly property var dropped: root.snapshot && root.snapshot.dropped ? root.snapshot.dropped : []
+              visible: dropped.length > 0
+              icon: "󰀦"
+              urgent: true
+              text: dropped.length === 0 ? ""
+                : dropped.length === 1
+                ? "An offline change couldn't be applied: " + (dropped[0].description ? "'" + dropped[0].description + "' — " : "") + dropped[0].reason
+                : dropped.length + " offline changes couldn't be applied (latest: " + dropped[dropped.length - 1].reason + ")"
+              actionText: "Dismiss"
+              foreground: root.foreground
+              accent: root.accent
+              fontFamily: root.fontFamily
+              onAction: root.svc.dismissDropped()
+            }
+            Banner {
+              width: parent.width
+              visible: !!(root.svc && root.svc.lastError)
+              icon: "󰀦"
+              urgent: true
+              text: root.svc && root.svc.lastError
+                ? root.svc.lastError.message + (root.svc.lastError.candidates && root.svc.lastError.candidates.length ? " — " + root.svc.lastError.candidates.join(", ") : "")
+                : ""
+              actionText: root.svc && root.svc.lastError && root.svc.lastError.details ? "Copy details" : "Dismiss"
+              foreground: root.foreground
+              accent: root.accent
+              fontFamily: root.fontFamily
+              onAction: {
+                if (root.svc.lastError.details) Util.execArgv(["wl-copy", "--", root.svc.lastError.details])
+                root.svc.lastError = null
+              }
+            }
+
+            // Body -------------------------------------------------------------
+            Item {
+              id: bodyArea
+              width: parent.width
+              height: Math.max(0, layout.height - y)
+
+              EntriesView {
+                id: entriesView
+                ctx: root
+                anchors.fill: parent
+                anchors.bottomMargin: bottomBar.visible ? bottomBar.height + Style.spacing.md : 0
+                visible: root.view === "list" && !root.showSettings && root.svc && root.svc.signedIn
+              }
+              TimesheetView {
+                id: timesheetView
+                ctx: root
+                anchors.fill: parent
+                visible: root.view === "timesheet" && !root.showSettings && root.svc && root.svc.signedIn
+              }
+              CalendarView {
+                id: calendarView
+                ctx: root
+                anchors.fill: parent
+                visible: root.view === "calendar" && !root.showSettings && root.svc && root.svc.signedIn
+              }
+              Loader {
+                id: settingsLoader
+                anchors.fill: parent
+                active: root.showSettings
+                visible: root.showSettings
+                sourceComponent: SettingsView { ctx: root }
+              }
+
+              EmptyState {
+                visible: !root.showSettings && !!root.svc && !root.svc.signedIn
+                anchors.centerIn: parent
+                width: parent.width - Style.space(40)
+                icon: "󰌾"
+                title: "Connect Toggl Track"
+                detail: "Paste your API token in Settings (⚙). It stays in your keyring."
+                foreground: root.foreground
+                accent: root.accent
+                fontFamily: root.fontFamily
+              }
+              ActionChip {
+                visible: !root.showSettings && !!root.svc && !root.svc.signedIn
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.top: parent.verticalCenter
+                anchors.topMargin: Style.space(70)
+                text: "Open Settings"
+                icon: "󰒓"
+                selected: true
+                foreground: root.foreground
+                accent: root.accent
+                fontFamily: root.fontFamily
+                onClicked: { root.toggleSettings(true); root.focusSettingsToken() }
+              }
+
+              // Loading placeholder while a range beyond the cache is fetched.
+              Column {
+                visible: !root.pool.covered && !root.showSettings
+                anchors.fill: parent
+                anchors.topMargin: Style.spacing.xl
+                spacing: Style.spacing.md
+                Repeater {
+                  model: 6
+                  delegate: Rectangle {
+                    width: bodyArea.width
+                    height: Style.space(44)
+                    radius: Math.max(Style.cornerRadius, Style.space(6))
+                    color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.05)
+                  }
+                }
+              }
+
+              // Confirm strip / bulk selection bar -------------------------------
+              Item {
+                id: bottomBar
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                visible: !root.showSettings && (!!root.confirm || entriesView.checkedCount > 0)
+                height: root.confirm ? confirmStrip.implicitHeight : bulk.height
+
+                ConfirmStrip {
+                  id: confirmStrip
+                  visible: !!root.confirm
+                  width: parent.width
+                  message: root.confirm ? root.confirm.message : ""
+                  foreground: root.foreground
+                  accent: root.accent
+                  fontFamily: root.fontFamily
+                  onConfirmed: root.runConfirm()
+                  onCanceled: { root.confirm = null; root.focusCatcher() }
+                }
+                Rectangle {
+                  id: bulk
+                  visible: !root.confirm
+                  width: parent.width
+                  height: Style.space(42)
+                  radius: Math.max(Style.cornerRadius, Style.space(8))
+                  color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.10)
+                  border.width: Style.spacing.hairline
+                  border.color: Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.28)
+                  Text {
+                    textFormat: Text.PlainText
+                    anchors.left: parent.left
+                    anchors.leftMargin: Style.spacing.xl
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: entriesView.checkedCount + " selected"
+                    color: root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                    font.bold: true
+                  }
+                  Row {
+                    anchors.right: parent.right
+                    anchors.rightMargin: Style.spacing.md
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Style.spacing.md
+                    ActionChip {
+                      text: "Delete"
+                      icon: "󰆴"
+                      destructive: true
+                      foreground: root.foreground
+                      accent: root.accent
+                      fontFamily: root.fontFamily
+                      onClicked: root.askConfirm("Delete " + entriesView.checkedCount + " selected entries?", Object.keys(root.checked))
+                    }
+                    ActionChip {
+                      text: "Cancel"
+                      foreground: root.foreground
+                      accent: root.accent
+                      fontFamily: root.fontFamily
+                      onClicked: root.checked = ({})
+                    }
+                  }
+                }
+              }
+
+              Loader {
+                id: editorLoader
+                width: parent.width
+                anchors.top: parent.top
+                z: 20
+                active: false
+                sourceComponent: EntryEditor {
+                  ctx: root
+                  width: parent.width
+                  onClosed: {
+                    root.focusCatcher()
+                    Qt.callLater(function() {
+                      if (!editorLoader.item || !editorLoader.item.visible) editorLoader.active = false
+                    })
+                  }
+                }
+              }
+            }
           }
         }
       }
