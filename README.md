@@ -45,6 +45,7 @@ Toggl web app:
 - `python3`, standard library only. There are no pip packages.
 - Optional: `secret-tool` (libsecret) and a running Secret Service keyring such
   as gnome-keyring. Without it, the token is stored in a mode 0600 file.
+- Optional: `wl-clipboard` (`wl-paste`, `wl-copy`) for pasting into and copying from the panel's text fields.
 - Optional, for `scripts/install-local.sh`: `rsync` and `jq`.
 - Optional, for development: `deno`, which runs the `Model.js` tests.
 
@@ -253,6 +254,11 @@ plugin stays within it:
   `~/.config/omarchy/shell.json`, which every bar plugin can read. It is never
   held in the shell's QML scene or passed on a command line. The panel pipes it
   to the CLI over stdin.
+- **No clipboard watching.** Qt's text inputs track the system clipboard and read
+  whatever any program puts there, without a size or time limit. The panel
+  uses none: its text fields draw their own text and handle keys directly, and
+  paste runs one bounded `wl-paste` (2 s, 4 KB) only when you press Ctrl+V.
+  The panel's content, and the settings and entry editor, exist only while shown.
 - **Local cache.** Cached entries live in `~/.cache/omarchy-toggl/`. The folder is mode 0700 and its files 0600.
 - **Safe file handling.** The token, cache and settings files are written to a fresh
   random 0600 temp file and renamed into place, through a folder opened with

@@ -2,11 +2,15 @@
 
 ## Unreleased
 
-- No text input exists while the panel is closed. The panel content is created
-  when the popup opens and destroyed after it closes; the settings view, the
-  entry editor and the picker lists are created only while shown. Qt keeps every
-  text field's paste state in sync with the clipboard, so the always-loaded bar
-  widget no longer hosts fields that read it. Reported in marketplace review.
+- No Qt text input is used at all. Qt keeps every text field's paste state in
+  sync with the system clipboard and reads foreign text with no size or time
+  limit. Text entry is now `components/PlainField.qml`, which draws its own text
+  and handles keys itself; paste (Ctrl+V / Shift+Insert) runs one bounded
+  `wl-paste` (2 s, 4 KB). The settings number inputs are steppers. The panel
+  content is also created only while the popup is showing, and the settings
+  view, entry editor and picker lists only while shown. Not supported in
+  fields: input methods, drag-and-drop, middle-click paste. Reported in
+  marketplace review.
 - The header's sync button no longer ends up with a tilted outline after syncing:
   only the glyph spins now, not the whole button.
 - Entry rows: the Continue/Stop and More buttons (and the checkbox) no longer

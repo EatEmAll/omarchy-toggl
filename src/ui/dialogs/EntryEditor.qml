@@ -149,7 +149,7 @@ Rectangle {
       }
     }
 
-    Ui.TextField {
+    PlainField {
       id: desc
       width: parent.width
       placeholderText: "Description"
@@ -291,14 +291,14 @@ Rectangle {
           durField.text = Model.hms(Math.round((root.stopMs - root.startMs) / 1000))
         }
       }
-      Ui.TextField {
+      PlainField {
         id: durField
         width: parent.cell
         foreground: ctx.foreground
         accent: ctx.accent
         font.family: ctx.fontFamily
         font.pixelSize: Style.font.bodySmall
-        horizontalAlignment: TextInput.AlignHCenter
+        horizontalAlignment: Qt.AlignHCenter
         onEditingFinished: {
           var secs = root.parseDuration(text)
           if (!isNaN(secs) && secs > 0) {

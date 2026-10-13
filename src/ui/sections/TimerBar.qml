@@ -115,7 +115,7 @@ Item {
     anchors.rightMargin: Style.spacing.xs
     spacing: Style.spacing.sm
 
-    Ui.TextField {
+    PlainField {
       id: field
       width: row.width - chip.width - tagBtn.width - billBtn.width - elapsed.width - round.width - row.spacing * 5
       anchors.verticalCenter: parent.verticalCenter
@@ -126,7 +126,7 @@ Item {
       font.family: ctx.fontFamily
       font.pixelSize: Style.font.subtitle
       font.bold: !!root.running
-      background: Item {}
+      bare: true
       horizontalPadding: Style.spacing.sm
       onTextChanged: root.recomputeSuggestions()
       onActiveFocusChanged: {

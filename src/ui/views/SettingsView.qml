@@ -169,7 +169,7 @@ Flickable {
         Row {
           width: parent.width
           spacing: Style.spacing.md
-          Ui.TextField {
+          PlainField {
             id: tokenField
             width: parent.width - connectChip.width - parent.spacing
             password: true
@@ -306,7 +306,7 @@ Flickable {
       }
       SettingRow {
         label: "Max label length"
-        Ui.NumberField {
+        StepField {
           from: 6; to: 40
           value: Number(root.opt("maxLabelChars"))
           foreground: ctx.foreground
@@ -318,7 +318,7 @@ Flickable {
       SettingRow {
         label: "Background sync (minutes)"
         hint: "Each sync costs one of 30 hourly /me API calls"
-        Ui.NumberField {
+        StepField {
           from: 3; to: 60
           value: Number(root.opt("syncMinutes"))
           foreground: ctx.foreground
@@ -329,7 +329,7 @@ Flickable {
       }
       SettingRow {
         label: "Days of entries to keep"
-        Ui.NumberField {
+        StepField {
           from: 2; to: 14
           value: Number(root.opt("historyDays"))
           foreground: ctx.foreground
@@ -341,7 +341,7 @@ Flickable {
       SettingRow {
         label: "Idle detection (minutes)"
         hint: "0 turns it off"
-        Ui.NumberField {
+        StepField {
           from: 0; to: 120
           value: Number(root.opt("idleMinutes"))
           foreground: ctx.foreground
@@ -353,7 +353,7 @@ Flickable {
       SettingRow {
         label: "Not-tracking reminder (minutes)"
         hint: "0 turns it off"
-        Ui.NumberField {
+        StepField {
           from: 0; to: 240; stepSize: 5
           value: Number(root.opt("remindMinutes"))
           foreground: ctx.foreground
@@ -365,16 +365,16 @@ Flickable {
       SettingRow {
         label: "Workspace ID"
         hint: "Empty uses your default workspace"
-        Ui.TextField {
+        Binding { target: wsField; property: "text"; value: String(root.opt("workspaceId") || "") }
+        PlainField {
           id: wsField
           width: Style.space(120)
-          text: String(root.opt("workspaceId") || "")
+          digitsOnly: true
           placeholderText: "default"
           foreground: ctx.foreground
           accent: ctx.accent
           font.family: ctx.fontFamily
           font.pixelSize: Style.font.bodySmall
-          validator: RegularExpressionValidator { regularExpression: /[0-9]*/ }
           onEditingFinished: if (text !== String(root.opt("workspaceId") || "")) root.save("workspaceId", text)
           Keys.onEscapePressed: function(event) { ctx.focusCatcher(); event.accepted = true }
         }

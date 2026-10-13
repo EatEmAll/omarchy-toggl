@@ -138,11 +138,11 @@ Item {
     width: parent.width
     height: visible ? Style.spacing.controlHeight + Style.spacing.md : 0
 
-    Ui.TextField {
+    Binding { target: search; property: "text"; value: ctx.query }
+    PlainField {
       id: search
       width: parent.width
       placeholderText: "󰍉  Search description, project, tag…"
-      text: ctx.query
       foreground: ctx.foreground
       accent: ctx.accent
       font.family: ctx.fontFamily

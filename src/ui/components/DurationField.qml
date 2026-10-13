@@ -5,7 +5,7 @@ import "../Model.js" as Model
 
 // Time input accepting "14:02", "2:02pm", "-15m", "yesterday 17:30".
 // `ms` is the committed value; invalid input shows an urgent border.
-Ui.TextField {
+PlainField {
   id: root
   property double ms: NaN
   property double nowMs: Date.now()
@@ -26,7 +26,7 @@ Ui.TextField {
   function reset() { text = display(ms) }
 
   font.pixelSize: Style.font.bodySmall
-  horizontalAlignment: TextInput.AlignHCenter
+  horizontalAlignment: Qt.AlignHCenter
   placeholderText: "hh:mm"
   Component.onCompleted: reset()
   onMsChanged: if (!activeFocus) reset()

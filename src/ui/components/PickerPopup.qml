@@ -91,7 +91,7 @@ Popup {
         readonly property var searchItem: search
         readonly property var listItem: list
 
-        Ui.TextField {
+        PlainField {
           id: search
           width: parent.width
           placeholderText: root.placeholder

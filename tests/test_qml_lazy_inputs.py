@@ -1,15 +1,16 @@
-"""Text inputs read the system clipboard whenever it changes (Qt keeps a
-TextInput's canPaste up to date), so none may exist while the panel is
-closed: the always-loaded bar widget must not host editable fields. The panel
-content, the settings view, the entry editor and the picker lists are created
-only while shown. These checks pin that structure."""
+"""Qt text inputs keep their paste state in sync with the system clipboard and
+read foreign text without a size or time limit. The plugin therefore uses no
+Qt text input at all: components/PlainField.qml draws its own text and pastes
+through one bounded wl-paste. The panel content, the settings view, the entry
+editor and the picker lists are additionally created only while shown. These
+checks pin that structure."""
 
 import re
 import unittest
 from pathlib import Path
 
 UI = Path(__file__).resolve().parents[1] / "src" / "ui"
-FIELD = re.compile(r"Ui\.TextField\s*\{|TextField\s*\{|TextInput\s*\{")
+FIELD = re.compile(r"(?<![A-Za-z])(Ui\.)?(TextField|TextInput|TextEdit|TextArea|SpinBox|NumberField)\s*\{|QQC\.\w*(TextField|SpinBox)")
 
 
 def src(rel):
@@ -17,6 +18,25 @@ def src(rel):
 
 
 class LazyInputs(unittest.TestCase):
+    def test_no_qt_text_input_anywhere(self):
+        found = []
+        for qml in sorted(UI.parent.rglob("*.qml")):
+            if FIELD.search(qml.read_text()):
+                found.append(str(qml.relative_to(UI.parent)))
+        self.assertEqual(found, [], "use components/PlainField.qml, never a Qt text input")
+
+    def test_no_editable_combo_or_input_hint_properties(self):
+        for qml in UI.parent.rglob("*.qml"):
+            text = qml.read_text()
+            self.assertNotRegex(text, r"editable:\s*true", str(qml))
+            self.assertNotRegex(text, r"\bTextInput\.", str(qml))
+
+    def test_paste_is_bounded(self):
+        field = src("components/PlainField.qml")
+        self.assertIn("timeout 2 wl-paste", field)
+        self.assertIn("head -c", field)
+        self.assertNotRegex(field, r"Clipboard|clipboard\.")
+
     def test_panel_has_no_field_of_its_own(self):
         self.assertIsNone(FIELD.search(src("Panel.qml")))
 
