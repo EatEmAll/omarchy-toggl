@@ -15,13 +15,18 @@ Item {
   signal loadFailed()
 
   property bool _again: false
+  property bool _busy: false      // from start until both exit and stream end
   visible: false
 
   function reload() {
     if (!root.path) return
-    if (reader.running) { root._again = true; return }
+    if (root._busy) { root._again = true; return }
+    root._busy = true
+    root._exited = false
+    root._drained = false
     reader.command = ["timeout", "-k", "1", "5", "head", "-c", String(root.maxBytes + 1), "--", root.path]
     reader.running = true
+    guard.restart()
   }
 
   onPathChanged: reload()
@@ -34,17 +39,45 @@ Item {
     onFileChanged: root.reload()
   }
 
+  // Quickshell does not order `exited` against the end of the output stream,
+  // so the result is used only once both have happened.
+  property bool _exited: false
+  property bool _drained: false
+  property int _code: -1
+
+  function _finish() {
+    if (!root._busy || !root._exited || !root._drained) return
+    root._busy = false
+    guard.stop()
+    var bytes = collected.data ? collected.data.byteLength : 0
+    if (root._code === 0 && bytes <= root.maxBytes) root.loaded(collected.text)
+    else root.loadFailed()
+    if (root._again) { root._again = false; Qt.callLater(root.reload) }
+  }
+
   Process {
     id: reader
-    property int code: -1
     stdout: StdioCollector {
       id: collected
       waitForEnd: true
+      onStreamFinished: { root._drained = true; root._finish() }
     }
     onExited: function(exitCode) {
-      var bytes = collected.data ? collected.data.byteLength : 0
-      if (exitCode === 0 && bytes <= root.maxBytes) root.loaded(collected.text)
-      else root.loadFailed()
+      root._code = exitCode
+      root._exited = true
+      root._finish()
+    }
+  }
+
+  // Last resort if the reader never reports back (e.g. it failed to start).
+  Timer {
+    id: guard
+    interval: 10000
+    onTriggered: {
+      if (!root._busy) return
+      reader.running = false
+      root._busy = false
+      root.loadFailed()
       if (root._again) { root._again = false; Qt.callLater(root.reload) }
     }
   }

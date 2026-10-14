@@ -8,6 +8,7 @@
 // A state is { text, cursor, anchor }; anchor === cursor means no selection.
 
 var MAX_PASTE = 4096
+var MAX_UNDO = 100
 
 function state(text, cursor, anchor) {
   var t = String(text === undefined || text === null ? "" : text)
@@ -46,7 +47,9 @@ function insert(s, str, maxLength, digitsOnly) {
   return { text: text, cursor: cursor, anchor: cursor }
 }
 
-function isWordChar(ch) { return /[\p{L}\p{N}_]/u.test(ch) }
+// No Unicode property escapes here: Qt's JS engine does not support them.
+// Anything that is not whitespace or ASCII punctuation is part of a word.
+function isWordChar(ch) { return ch !== "" && !/[\s!-\/:-@\[-^`{-~]/.test(ch) }
 
 function wordLeft(text, i) {
   while (i > 0 && !isWordChar(text.charAt(i - 1))) i--

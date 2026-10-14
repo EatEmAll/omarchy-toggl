@@ -43,14 +43,18 @@ Item {
     collector.errDone = false
     collector.code = -1
     proc.stdinEnabled = current.stdin !== null
-    proc.command = ["python3", root.cliPath].concat(current.args)
+    // stdout and stderr each pass through `head -c`, so the shell never
+    // buffers more than maxOut / maxErr bytes whatever the CLI prints.
+    proc.command = ["sh", "-c", '{ python3 "$0" "$@" 2>&1 1>&3 3>&- | head -c ' + (root.maxErr + 1) + ' >&2; } 3>&1 | head -c ' + (root.maxOut + 1),
+                    root.cliPath].concat(current.args)
     root.timedOut = false
     proc.running = true
     watchdog.restart()
   }
 
-  // Output caps the CLI enforces itself (cli.MAX_OUTPUT, capped stderr);
-  // anything larger is treated as a failed run rather than parsed.
+  // Output limits. The CLI keeps within them itself (cli.MAX_OUTPUT, capped
+  // stderr); the command pipes both streams through `head -c` one byte past
+  // them, and a run that reaches that byte is treated as failed, not parsed.
   readonly property int maxOut: 12 * 1024 * 1024 + 1024
   readonly property int maxErr: 4 * 64 * 1024 + 1024    // 64 K characters of UTF-8
 

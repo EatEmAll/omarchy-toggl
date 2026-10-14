@@ -78,9 +78,4 @@ Item {
     fontFamily: root.fontFamily
     onClicked: root.step(1)
   }
-  MouseArea {
-    anchors.fill: parent
-    acceptedButtons: Qt.NoButton
-    onWheel: function(wheel) { root.step(wheel.angleDelta.y > 0 ? 1 : -1) }
-  }
 }

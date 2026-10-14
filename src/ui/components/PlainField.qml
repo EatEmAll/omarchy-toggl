@@ -22,7 +22,7 @@ FocusScope {
   property string placeholderText: ""
   property bool password: false
   property bool digitsOnly: false
-  property int maxLength: 512
+  property int maxLength: 4096
   property color foreground: Color.foreground
   property color accent: Color.accent
   property color selectionTint: Style.selectionFillFor(foreground, accent)
@@ -50,7 +50,7 @@ FocusScope {
   clip: false
 
   function selectAll() { _set(Logic.selectAll(_state())) }
-  function clear() { _set(Logic.state("", 0)) }
+  function clear() { _edit(Logic.state("", 0)) }
   function copySelection() {
     if (root.password || !root.hasSelection) return
     Util.execArgv(["wl-copy", "--", Logic.selectedText(_state())])
@@ -58,6 +58,34 @@ FocusScope {
   function paste() {
     if (pasteProc.running || !root.enabled) return
     pasteProc.running = true
+  }
+
+  property var _undo: []
+  property var _redo: []
+
+  // Edits go through _edit so they can be undone; caret moves use _set.
+  function _edit(s) {
+    var before = _state()
+    if (s.text === before.text) { _set(s); return }
+    var u = _undo.concat([before])
+    if (u.length > Logic.MAX_UNDO) u = u.slice(u.length - Logic.MAX_UNDO)
+    _undo = u
+    _redo = []
+    _set(s)
+  }
+  function undo() {
+    if (!_undo.length) return
+    _redo = _redo.concat([_state()])
+    var prev = _undo[_undo.length - 1]
+    _undo = _undo.slice(0, -1)
+    _set(prev)
+  }
+  function redo() {
+    if (!_redo.length) return
+    _undo = _undo.concat([_state()])
+    var next = _redo[_redo.length - 1]
+    _redo = _redo.slice(0, -1)
+    _set(next)
   }
 
   function _state() { return Logic.state(text, cursorPosition, _anchor) }
@@ -83,7 +111,9 @@ FocusScope {
 
   onTextChanged: {
     if (_writing) return
-    var s = Logic.state(text, text.length)          // set from outside: caret to the end
+    _undo = []                                       // set from outside: new content,
+    _redo = []                                       // caret to the end
+    var s = Logic.state(text, text.length)
     cursorPosition = s.cursor
     _anchor = s.anchor
     ensureVisible()
@@ -108,7 +138,7 @@ FocusScope {
       onStreamFinished: {
         if (!root.activeFocus) return
         // head -c may cut a multi-byte character; drop the partial one
-        root._set(Logic.insert(root._state(), text.replace(/\uFFFD$/, ""), root.maxLength, root.digitsOnly))
+        root._edit(Logic.insert(root._state(), text.replace(/\uFFFD$/, ""), root.maxLength, root.digitsOnly))
       }
     }
   }
@@ -212,19 +242,23 @@ FocusScope {
         root.editingFinished()
         return                                       // not accepted: owners still see it
       }
-      if (event.key === Qt.Key_Backspace) root._set(Logic.backspace(s, ctrl))
-      else if (event.key === Qt.Key_Delete && !shift) root._set(Logic.del(s, ctrl))
+      if (event.key === Qt.Key_Backspace) root._edit(Logic.backspace(s, ctrl))
+      else if (event.key === Qt.Key_Delete && !shift) root._edit(Logic.del(s, ctrl))
       else if (event.key === Qt.Key_Left) root._set(Logic.move(s, "left", { word: ctrl, extend: shift }))
       else if (event.key === Qt.Key_Right) root._set(Logic.move(s, "right", { word: ctrl, extend: shift }))
       else if (event.key === Qt.Key_Home) root._set(Logic.move(s, "home", { extend: shift }))
       else if (event.key === Qt.Key_End) root._set(Logic.move(s, "end", { extend: shift }))
       else if (ctrl && event.key === Qt.Key_A) root.selectAll()
       else if (ctrl && event.key === Qt.Key_C) root.copySelection()
-      else if (ctrl && event.key === Qt.Key_X) { root.copySelection(); if (!root.password) root._set(Logic.backspace(s, false)) }
+      else if (ctrl && event.key === Qt.Key_X) {
+        if (Logic.hasSelection(s) && !root.password) { root.copySelection(); root._edit(Logic.backspace(s, false)) }
+      }
+      else if (ctrl && (event.key === Qt.Key_Y || (shift && event.key === Qt.Key_Z))) root.redo()
+      else if (ctrl && event.key === Qt.Key_Z) root.undo()
       else if ((ctrl && event.key === Qt.Key_V) || (shift && event.key === Qt.Key_Insert)) root.paste()
       else if (event.text.length > 0 && !ctrl && !(event.modifiers & Qt.MetaModifier)
                && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127)
-        root._set(Logic.insert(s, event.text, root.maxLength, root.digitsOnly))
+        root._edit(Logic.insert(s, event.text, root.maxLength, root.digitsOnly))
       else done = false
       event.accepted = done
     }

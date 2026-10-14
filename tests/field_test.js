@@ -43,6 +43,14 @@ Deno.test("backspace and delete, by character and by word", () => {
   assertEquals(F.backspace(F.selectAll(F.state("abc"))).text, "");
 });
 
+Deno.test("word boundaries work without engine-specific regex features", () => {
+  assert(F.isWordChar("a") && F.isWordChar("Z") && F.isWordChar("7") && F.isWordChar("_"));
+  assert(F.isWordChar("\u05e9") && F.isWordChar("\u00e9"));
+  for (const ch of [" ", "-", ".", ",", "/", "@", "[", "^", "`", "{", "~", "\t"]) assert(!F.isWordChar(ch), ch);
+  assertEquals(F.backspace(F.state("foo-bar baz", 7), true).text, "foo- baz");
+  assertEquals(F.move(F.state("שלום עולם", 9), "left", { word: true }).cursor, 5);
+});
+
 Deno.test("an emoji is never split", () => {
   const s = F.state("a\u{1F600}b", 3);
   assertEquals(F.backspace(s).text, "ab");

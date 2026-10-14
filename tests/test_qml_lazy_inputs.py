@@ -80,8 +80,17 @@ class BoundedShellReads(unittest.TestCase):
 
     def test_backend_output_is_capped(self):
         backend = src("Backend.qml")
+        # both streams pass through head -c before the shell buffers them
+        self.assertIn("2>&1 1>&3 3>&- | head -c ' + (root.maxErr + 1)", backend)
+        self.assertIn("3>&1 | head -c ' + (root.maxOut + 1)", backend)
         self.assertRegex(backend, r"var oversized = ")
         self.assertRegex(backend, r"raw = oversized \? \"\"")
+
+    def test_field_logic_avoids_unsupported_regex(self):
+        # Qt's V4 engine lacks Unicode property escapes; Deno would hide that.
+        logic = src("FieldLogic.js")
+        self.assertNotIn("\\p{", logic)
+        self.assertNotRegex(logic, r"/[a-z]*u[a-z]*\.test|/u\b")
 
     def test_only_known_processes_read_output(self):
         readers = sorted(str(q.relative_to(UI.parent)) for q in UI.parent.rglob("*.qml")
